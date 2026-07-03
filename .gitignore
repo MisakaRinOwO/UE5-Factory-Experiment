@@ -1,0 +1,51 @@
+# Unreal Engine generated files
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Unreal Engine local cache and reports
+*.log
+*.tmp
+*.temp
+*.tlog
+
+# Build products and debug symbols
+*.apk
+*.app
+*.dSYM/
+*.dll
+*.dylib
+*.exe
+*.exp
+*.idb
+*.ilk
+*.lib
+*.obj
+*.pdb
+*.so
+*.target
+
+# IDE and editor state
+.vs/
+.idea/
+*.sln.DotSettings.user
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local environment files
+.env
+.env.*
+!.env.example
