@@ -5,6 +5,8 @@
 #include "Engine/World.h"
 #include "Factory/Buildings/FactoryBuilding.h"
 #include "Factory/Data/FactoryBuildingDataAsset.h"
+#include "Factory/UI/FactoryDeveloperModeWidget.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "GameFramework/PlayerController.h"
 
 namespace
@@ -66,6 +68,11 @@ bool AFactoryManager::TryPlaceBuilding(
 	EFactoryDirection Direction
 )
 {
+	if (BuildingData && BuildingData->bIsConveyor)
+	{
+		return TryPlaceConveyor(BuildingData, OriginCoord, Direction);
+	}
+
 	if (!CanPlaceBuilding(BuildingData, OriginCoord, Direction))
 	{
 		return false;
@@ -193,6 +200,104 @@ bool AFactoryManager::IsCellValidForPath(const FGridCoord& Coord) const
 		|| Cell->Occupancy == EFactoryCellOccupancy::Conveyor;
 }
 
+void AFactoryManager::SetSelectedBuilding(UFactoryBuildingDataAsset* BuildingData)
+{
+	SelectedBuilding = BuildingData;
+}
+
+void AFactoryManager::ClearSelectedBuilding()
+{
+	SelectedBuilding = nullptr;
+}
+
+bool AFactoryManager::HasSelectedBuilding() const
+{
+	return SelectedBuilding != nullptr;
+}
+
+bool AFactoryManager::TryPlaceSelectedBuildingAtHoveredCell()
+{
+	FGridCoord OriginCoord;
+	if (!GetHoveredCellCoord(OriginCoord))
+	{
+		return false;
+	}
+
+	return TryPlaceSelectedBuilding(OriginCoord);
+}
+
+bool AFactoryManager::TryPlaceSelectedBuilding(const FGridCoord& OriginCoord)
+{
+	if (!SelectedBuilding)
+	{
+		return false;
+	}
+
+	return TryPlaceBuilding(SelectedBuilding, OriginCoord, CurrentBuildDirection);
+}
+
+void AFactoryManager::RotateBuildDirectionClockwise()
+{
+	CurrentBuildDirection = GetClockwiseDirection(CurrentBuildDirection);
+}
+
+void AFactoryManager::RotateBuildDirectionCounterClockwise()
+{
+	CurrentBuildDirection = GetCounterClockwiseDirection(CurrentBuildDirection);
+}
+
+EFactoryDirection AFactoryManager::GetClockwiseDirection(EFactoryDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EFactoryDirection::Up:
+		return EFactoryDirection::Right;
+	case EFactoryDirection::Right:
+		return EFactoryDirection::Down;
+	case EFactoryDirection::Down:
+		return EFactoryDirection::Left;
+	case EFactoryDirection::Left:
+		return EFactoryDirection::Up;
+	case EFactoryDirection::None:
+	default:
+		return EFactoryDirection::Up;
+	}
+}
+
+EFactoryDirection AFactoryManager::GetCounterClockwiseDirection(EFactoryDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EFactoryDirection::Up:
+		return EFactoryDirection::Left;
+	case EFactoryDirection::Left:
+		return EFactoryDirection::Down;
+	case EFactoryDirection::Down:
+		return EFactoryDirection::Right;
+	case EFactoryDirection::Right:
+		return EFactoryDirection::Up;
+	case EFactoryDirection::None:
+	default:
+		return EFactoryDirection::Up;
+	}
+}
+
+bool AFactoryManager::HasHoveredCell() const
+{
+	return bHasHoveredCell;
+}
+
+bool AFactoryManager::GetHoveredCellCoord(FGridCoord& OutCoord) const
+{
+	if (!bHasHoveredCell)
+	{
+		return false;
+	}
+
+	OutCoord = HoveredCellCoord;
+	return true;
+}
+
 FFactoryGridCell* AFactoryManager::GetOrCreateCell(const FGridCoord& Coord)
 {
 	const FGridCoord ChunkCoord = WorldCoordToChunkCoord(Coord);
@@ -229,13 +334,22 @@ TArray<FGridCoord> AFactoryManager::GetNeighbors(const FGridCoord& Coord) const
 
 void AFactoryManager::SetDebugHoveredCell(const FGridCoord& Coord)
 {
-	DebugHoveredCellCoord = Coord;
-	bHasDebugHoveredCell = true;
+	SetHoveredCell(Coord);
 }
 
 void AFactoryManager::ClearDebugHoveredCell()
 {
-	bHasDebugHoveredCell = false;
+	ClearHoveredCell();
+}
+
+void AFactoryManager::SetDeveloperModeWidget(UFactoryDeveloperModeWidget* Widget)
+{
+	DeveloperModeWidget = Widget;
+
+	if (bHasHoveredCell)
+	{
+		UpdateDeveloperModeCoordDisplay(HoveredCellCoord);
+	}
 }
 
 void AFactoryManager::SimulationStep()
@@ -257,6 +371,49 @@ void AFactoryManager::CreateInitialChunks()
 	Chunks.FindOrAdd(FGridCoord(0, 0));
 }
 
+bool AFactoryManager::TryPlaceConveyor(
+	UFactoryBuildingDataAsset* ConveyorData,
+	const FGridCoord& OriginCoord,
+	EFactoryDirection Direction
+)
+{
+	if (!CanPlaceConveyor(ConveyorData, OriginCoord, Direction))
+	{
+		return false;
+	}
+
+	FFactoryGridCell* Cell = GetOrCreateCell(OriginCoord);
+	if (!Cell)
+	{
+		return false;
+	}
+
+	FFactoryConveyorSegment ConveyorSegment;
+	ConveyorSegment.Coord = OriginCoord;
+	ConveyorSegment.Direction = Direction;
+	ConveyorSegment.SegmentId = Conveyors.Num();
+
+	const int32 ConveyorId = Conveyors.Add(ConveyorSegment);
+
+	Cell->Occupancy = EFactoryCellOccupancy::Conveyor;
+	Cell->Direction = Direction;
+	Cell->BuildingId = INDEX_NONE;
+	Cell->ConveyorId = ConveyorId;
+
+	return true;
+}
+
+bool AFactoryManager::CanPlaceConveyor(
+	UFactoryBuildingDataAsset* ConveyorData,
+	const FGridCoord& OriginCoord,
+	EFactoryDirection Direction
+) const
+{
+	return ConveyorData
+		&& ConveyorData->bIsConveyor
+		&& CanPlaceBuilding(ConveyorData, OriginCoord, Direction);
+}
+
 void AFactoryManager::UpdateHoveredCellFromMouseRaycast()
 {
 	FGridCoord NewHoveredCellCoord;
@@ -264,7 +421,7 @@ void AFactoryManager::UpdateHoveredCellFromMouseRaycast()
 	{
 		if (bHasPreviousHoveredCellCoord)
 		{
-			ClearDebugHoveredCell();
+			ClearHoveredCell();
 			bHasPreviousHoveredCellCoord = false;
 		}
 
@@ -278,7 +435,7 @@ void AFactoryManager::UpdateHoveredCellFromMouseRaycast()
 
 	PreviousHoveredCellCoord = NewHoveredCellCoord;
 	bHasPreviousHoveredCellCoord = true;
-	SetDebugHoveredCell(NewHoveredCellCoord);
+	SetHoveredCell(NewHoveredCellCoord);
 }
 
 bool AFactoryManager::TryGetMouseRaycastGridCoord(FGridCoord& OutCoord) const
@@ -314,6 +471,34 @@ bool AFactoryManager::TryGetMouseRaycastGridCoord(FGridCoord& OutCoord) const
 	return true;
 }
 
+void AFactoryManager::SetHoveredCell(const FGridCoord& Coord)
+{
+	HoveredCellCoord = Coord;
+	bHasHoveredCell = true;
+
+	DebugHoveredCellCoord = Coord;
+	bHasDebugHoveredCell = true;
+
+	UpdateDeveloperModeCoordDisplay(Coord);
+}
+
+void AFactoryManager::ClearHoveredCell()
+{
+	bHasHoveredCell = false;
+	bHasDebugHoveredCell = false;
+}
+
+void AFactoryManager::UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoord)
+{
+	if (!DeveloperModeWidget)
+	{
+		return;
+	}
+
+	DeveloperModeWidget->SetCurrentCellCoord(CellCoord, EFactoryCoordType::Cell);
+	DeveloperModeWidget->SetCurrentCellCoord(WorldCoordToChunkCoord(CellCoord), EFactoryCoordType::Chunk);
+}
+
 void AFactoryManager::DrawDebugGrid() const
 {
 	if (!GetWorld())
@@ -336,9 +521,9 @@ void AFactoryManager::DrawDebugGrid() const
 		}
 	}
 
-	if (bDrawDebugHoveredCell && bHasDebugHoveredCell && GetCell(DebugHoveredCellCoord))
+	if (bDrawDebugHoveredCell && bHasHoveredCell && GetCell(HoveredCellCoord))
 	{
-		DrawDebugCellBounds(DebugHoveredCellCoord, DebugHoveredCellColor, DebugHoveredCellLineThickness);
+		DrawDebugCellBounds(HoveredCellCoord, DebugHoveredCellColor, DebugHoveredCellLineThickness);
 	}
 }
 

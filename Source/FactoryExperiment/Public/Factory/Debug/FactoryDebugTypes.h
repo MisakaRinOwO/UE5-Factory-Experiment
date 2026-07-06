@@ -5,6 +5,13 @@
 #include "Grid/GridCoord.h"
 #include "FactoryDebugTypes.generated.h"
 
+UENUM(BlueprintType)
+enum class EFactoryCoordType : uint8
+{
+	Cell UMETA(DisplayName = "Cell"),
+	Chunk UMETA(DisplayName = "Chunk")
+};
+
 USTRUCT(BlueprintType)
 struct FFactoryCellDebugInfo
 {

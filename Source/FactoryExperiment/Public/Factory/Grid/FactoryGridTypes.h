@@ -32,7 +32,7 @@ struct FFactoryGridCell
 	}
 };
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FFactoryChunk
 {
 	GENERATED_BODY()
@@ -40,7 +40,7 @@ struct FFactoryChunk
 	static constexpr int32 ChunkSize = 32;
 	static constexpr int32 CellCount = ChunkSize * ChunkSize;
 
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TArray<FFactoryGridCell> Cells;
 
 	FFactoryChunk()

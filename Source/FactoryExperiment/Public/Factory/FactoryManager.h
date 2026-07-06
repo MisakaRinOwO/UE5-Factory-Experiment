@@ -6,6 +6,7 @@
 
 #include "Factory/Buildings/FactoryMachineTypes.h"
 #include "Factory/Conveyor/FactoryConveyorTypes.h"
+#include "Factory/Debug/FactoryDebugTypes.h"
 #include "Factory/Grid/FactoryGridTypes.h"
 #include "Grid/GridCoord.h"
 
@@ -14,7 +15,9 @@
 class AFactoryBuilding;
 class USceneComponent;
 class UFactoryBuildingDataAsset;
+class UFactoryDeveloperModeWidget;
 class UFactoryRecipeDataAsset;
+class UUserWidget;
 
 UCLASS()
 class FACTORYEXPERIMENT_API AFactoryManager : public AActor
@@ -38,6 +41,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	float SimulationStepInterval = 0.2f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Placement")
+	TObjectPtr<UFactoryBuildingDataAsset> SelectedBuilding;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Placement")
+	EFactoryDirection CurrentBuildDirection = EFactoryDirection::Up;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Debug")
 	bool bDrawDebugCells = false;
 
@@ -50,20 +59,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Debug")
 	bool bUpdateHoveredCellFromMouseRaycast = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Debug")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory|Debug")
 	FGridCoord DebugHoveredCellCoord;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Debug|UI")
+	TObjectPtr<UFactoryDeveloperModeWidget> DeveloperModeWidget;
+
 private:
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TMap<FGridCoord, FFactoryChunk> Chunks;
 
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TArray<TObjectPtr<AFactoryBuilding>> BuildingActors;
 
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TArray<FFactoryMachineRuntimeData> MachineRuntimeData;
 
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TArray<FFactoryConveyorSegment> Conveyors;
 
 	FTimerHandle SimulationTimerHandle;
@@ -89,6 +101,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Factory")
 	bool IsCellValidForPath(const FGridCoord& Coord) const;
 
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	void SetSelectedBuilding(UFactoryBuildingDataAsset* BuildingData);
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	void ClearSelectedBuilding();
+
+	UFUNCTION(BlueprintPure, Category = "Factory|Placement")
+	bool HasSelectedBuilding() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	bool TryPlaceSelectedBuildingAtHoveredCell();
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	bool TryPlaceSelectedBuilding(const FGridCoord& OriginCoord);
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	void RotateBuildDirectionClockwise();
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	void RotateBuildDirectionCounterClockwise();
+
+	UFUNCTION(BlueprintPure, Category = "Factory|Placement")
+	EFactoryDirection GetClockwiseDirection(EFactoryDirection Direction) const;
+
+	UFUNCTION(BlueprintPure, Category = "Factory|Placement")
+	EFactoryDirection GetCounterClockwiseDirection(EFactoryDirection Direction) const;
+
+	UFUNCTION(BlueprintPure, Category = "Factory|Hover")
+	bool HasHoveredCell() const;
+
+	UFUNCTION(BlueprintPure, Category = "Factory|Hover")
+	bool GetHoveredCellCoord(FGridCoord& OutCoord) const;
+
 	FFactoryGridCell* GetOrCreateCell(const FGridCoord& Coord);
 	const FFactoryGridCell* GetCell(const FGridCoord& Coord) const;
 
@@ -101,6 +146,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Factory|Debug")
 	void ClearDebugHoveredCell();
 
+	UFUNCTION(BlueprintCallable, Category = "Factory|Debug|UI")
+	void SetDeveloperModeWidget(UFactoryDeveloperModeWidget* Widget);
+
 private:
 	static constexpr float CellSize = 100.0f;
 
@@ -110,8 +158,13 @@ private:
 	void UpdateConveyors(float DeltaTime);
 
 	void CreateInitialChunks();
+	bool TryPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction);
+	bool CanPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
 	void UpdateHoveredCellFromMouseRaycast();
 	bool TryGetMouseRaycastGridCoord(FGridCoord& OutCoord) const;
+	void SetHoveredCell(const FGridCoord& Coord);
+	void ClearHoveredCell();
+	void UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoord);
 	void DrawDebugGrid() const;
 	void DrawDebugCellGridForChunk(const FGridCoord& ChunkCoord) const;
 	void DrawDebugChunkBounds(const FGridCoord& ChunkCoord) const;
@@ -128,6 +181,8 @@ private:
 	int32 RegisterBuildingActor(AFactoryBuilding* Building);
 
 	bool bHasDebugHoveredCell = false;
+	bool bHasHoveredCell = false;
+	FGridCoord HoveredCellCoord;
 	bool bHasPreviousHoveredCellCoord = false;
 	FGridCoord PreviousHoveredCellCoord;
 };
