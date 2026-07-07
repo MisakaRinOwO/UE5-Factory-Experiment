@@ -142,6 +142,8 @@ bool AFactoryManager::TryPlaceBuilding(
 		MachineRuntimeData.Add(RuntimeData);
 	}
 
+	UpdateDeveloperModeCoordDisplay(OriginCoord);
+
 	return true;
 }
 
@@ -369,6 +371,9 @@ void AFactoryManager::UpdateConveyors(float /*DeltaTime*/)
 void AFactoryManager::CreateInitialChunks()
 {
 	Chunks.FindOrAdd(FGridCoord(0, 0));
+	Chunks.FindOrAdd(FGridCoord(-1, 0));
+	Chunks.FindOrAdd(FGridCoord(0, -1));
+	Chunks.FindOrAdd(FGridCoord(-1, -1));
 }
 
 bool AFactoryManager::TryPlaceConveyor(
@@ -399,6 +404,8 @@ bool AFactoryManager::TryPlaceConveyor(
 	Cell->Direction = Direction;
 	Cell->BuildingId = INDEX_NONE;
 	Cell->ConveyorId = ConveyorId;
+
+	UpdateDeveloperModeCoordDisplay(OriginCoord);
 
 	return true;
 }
@@ -486,6 +493,12 @@ void AFactoryManager::ClearHoveredCell()
 {
 	bHasHoveredCell = false;
 	bHasDebugHoveredCell = false;
+
+	if (DeveloperModeWidget)
+	{
+		DeveloperModeWidget->ClearCurrentCellCoord();
+		DeveloperModeWidget->ClearBuildingOnCell();
+	}
 }
 
 void AFactoryManager::UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoord)
@@ -497,6 +510,16 @@ void AFactoryManager::UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoor
 
 	DeveloperModeWidget->SetCurrentCellCoord(CellCoord, EFactoryCoordType::Cell);
 	DeveloperModeWidget->SetCurrentCellCoord(WorldCoordToChunkCoord(CellCoord), EFactoryCoordType::Chunk);
+
+	const FFactoryGridCell* Cell = GetCell(CellCoord);
+	if (Cell && Cell->IsOccupied())
+	{
+		DeveloperModeWidget->UpdateBuildingOnCell(*Cell);
+	}
+	else
+	{
+		DeveloperModeWidget->ClearBuildingOnCell();
+	}
 }
 
 void AFactoryManager::DrawDebugGrid() const

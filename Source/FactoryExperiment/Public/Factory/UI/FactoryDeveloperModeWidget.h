@@ -14,4 +14,13 @@ class FACTORYEXPERIMENT_API UFactoryDeveloperModeWidget : public UUserWidget
 public:
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Factory|Debug|UI")
 	void SetCurrentCellCoord(FGridCoord Coord, EFactoryCoordType CoordType);
+
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Factory|Debug|UI")
+	void ClearCurrentCellCoord();
+
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Factory|Debug|UI")
+	void UpdateBuildingOnCell(FFactoryGridCell Cell);
+
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Factory|Debug|UI")
+	void ClearBuildingOnCell();
 };
