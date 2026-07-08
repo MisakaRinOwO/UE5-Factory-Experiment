@@ -49,3 +49,6 @@ desktop.ini
 .env
 .env.*
 !.env.example
+
+# Local AI/project memory context
+ai-context/
