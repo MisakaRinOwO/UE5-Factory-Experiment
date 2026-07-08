@@ -27,7 +27,7 @@ struct FFactoryCellDebugInfo
 	int32 BuildingId = -1;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	int32 ConveyorId = -1;
+	FGridCoord ConveyorCoord;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	bool bIsValidForPath = true;

@@ -1,6 +1,7 @@
 #include "Factory/FactoryManager.h"
 
 #include "Components/SceneComponent.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Factory/Buildings/FactoryBuilding.h"
@@ -238,6 +239,140 @@ bool AFactoryManager::TryPlaceSelectedBuilding(const FGridCoord& OriginCoord)
 	return TryPlaceBuilding(SelectedBuilding, OriginCoord, CurrentBuildDirection);
 }
 
+bool AFactoryManager::RemoveBuildableAtHoveredCell()
+{
+	FGridCoord Coord;
+	if (!GetHoveredCellCoord(Coord))
+	{
+		return false;
+	}
+
+	return RemoveBuildableAtCoord(Coord);
+}
+
+bool AFactoryManager::RemoveBuildableAtCoord(const FGridCoord& Coord)
+{
+	const FFactoryGridCell* Cell = GetCell(Coord);
+	if (!Cell || Cell->IsEmpty())
+	{
+		return false;
+	}
+
+	switch (Cell->Occupancy)
+	{
+	case EFactoryCellOccupancy::Conveyor:
+		return RemoveConveyorAtCoord(Cell->ConveyorCoord);
+	case EFactoryCellOccupancy::Building:
+		return RemoveBuildingAtCoord(Coord);
+	case EFactoryCellOccupancy::Blocked:
+	case EFactoryCellOccupancy::Empty:
+	default:
+		return false;
+	}
+}
+
+bool AFactoryManager::RemoveConveyorAtHoveredCell()
+{
+	FGridCoord Coord;
+	if (!GetHoveredCellCoord(Coord))
+	{
+		return false;
+	}
+
+	return RemoveConveyorAtCoord(Coord);
+}
+
+bool AFactoryManager::RemoveConveyorAtCoord(const FGridCoord& Coord)
+{
+	FFactoryConveyorSegment RemovedSegment;
+	if (!ConveyorsByCellCoord.RemoveAndCopyValue(Coord, RemovedSegment))
+	{
+		return false;
+	}
+
+	if (RemovedSegment.ConveyorData)
+	{
+		if (UHierarchicalInstancedStaticMeshComponent** VisualComponent = ConveyorVisualComponentsByData.Find(RemovedSegment.ConveyorData))
+		{
+			if (*VisualComponent && RemovedSegment.VisualInstanceIndex != INDEX_NONE)
+			{
+				(*VisualComponent)->RemoveInstance(RemovedSegment.VisualInstanceIndex);
+				RepairConveyorVisualInstanceIndices(RemovedSegment.ConveyorData);
+			}
+		}
+	}
+
+	if (FFactoryGridCell* Cell = GetOrCreateCell(Coord))
+	{
+		Cell->Occupancy = EFactoryCellOccupancy::Empty;
+		Cell->Direction = EFactoryDirection::None;
+		Cell->BuildingId = INDEX_NONE;
+		Cell->ConveyorCoord = FGridCoord();
+	}
+
+	UpdateDeveloperModeCoordDisplay(Coord);
+
+	return true;
+}
+
+bool AFactoryManager::RemoveBuildingAtCoord(const FGridCoord& Coord)
+{
+	const FFactoryGridCell* SourceCell = GetCell(Coord);
+	if (!SourceCell || SourceCell->Occupancy != EFactoryCellOccupancy::Building || SourceCell->BuildingId == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 BuildingId = SourceCell->BuildingId;
+	if (!BuildingActors.IsValidIndex(BuildingId) || !BuildingActors[BuildingId])
+	{
+		return false;
+	}
+
+	AFactoryBuilding* BuildingActor = BuildingActors[BuildingId];
+	const UFactoryBuildingDataAsset* BuildingData = BuildingActor->BuildingDefinition;
+	if (!BuildingData)
+	{
+		return false;
+	}
+
+	for (int32 LocalY = 0; LocalY < BuildingData->FootprintSize.Y; ++LocalY)
+	{
+		for (int32 LocalX = 0; LocalX < BuildingData->FootprintSize.X; ++LocalX)
+		{
+			const FGridCoord CellCoord(
+				BuildingActor->OriginCoord.X + LocalX,
+				BuildingActor->OriginCoord.Y + LocalY
+			);
+
+			FFactoryGridCell* Cell = GetOrCreateCell(CellCoord);
+			if (!Cell || Cell->BuildingId != BuildingId)
+			{
+				continue;
+			}
+
+			Cell->Occupancy = EFactoryCellOccupancy::Empty;
+			Cell->Direction = EFactoryDirection::None;
+			Cell->BuildingId = INDEX_NONE;
+			Cell->ConveyorCoord = FGridCoord();
+		}
+	}
+
+	MachineRuntimeData.RemoveAllSwap(
+		[BuildingId](const FFactoryMachineRuntimeData& RuntimeData)
+		{
+			return RuntimeData.BuildingId == BuildingId;
+		}
+	);
+
+	BuildingActors[BuildingId] = nullptr;
+	BuildingActor->Destroy();
+
+	UpdateDeveloperModeCoordDisplay(Coord);
+
+	return true;
+}
+
 void AFactoryManager::RotateBuildDirectionClockwise()
 {
 	CurrentBuildDirection = GetClockwiseDirection(CurrentBuildDirection);
@@ -396,14 +531,14 @@ bool AFactoryManager::TryPlaceConveyor(
 	FFactoryConveyorSegment ConveyorSegment;
 	ConveyorSegment.Coord = OriginCoord;
 	ConveyorSegment.Direction = Direction;
-	ConveyorSegment.SegmentId = Conveyors.Num();
-
-	const int32 ConveyorId = Conveyors.Add(ConveyorSegment);
+	ConveyorSegment.ConveyorData = ConveyorData;
+	ConveyorSegment.VisualInstanceIndex = AddConveyorVisual(ConveyorData, OriginCoord, Direction);
+	ConveyorsByCellCoord.Add(OriginCoord, ConveyorSegment);
 
 	Cell->Occupancy = EFactoryCellOccupancy::Conveyor;
 	Cell->Direction = Direction;
 	Cell->BuildingId = INDEX_NONE;
-	Cell->ConveyorId = ConveyorId;
+	Cell->ConveyorCoord = OriginCoord;
 
 	UpdateDeveloperModeCoordDisplay(OriginCoord);
 
@@ -418,7 +553,118 @@ bool AFactoryManager::CanPlaceConveyor(
 {
 	return ConveyorData
 		&& ConveyorData->bIsConveyor
+		&& ConveyorData->ConveyorMesh
 		&& CanPlaceBuilding(ConveyorData, OriginCoord, Direction);
+}
+
+UHierarchicalInstancedStaticMeshComponent* AFactoryManager::GetOrCreateConveyorVisualComponent(UFactoryBuildingDataAsset* ConveyorData)
+{
+	if (!ConveyorData || !ConveyorData->ConveyorMesh)
+	{
+		return nullptr;
+	}
+
+	if (UHierarchicalInstancedStaticMeshComponent** ExistingComponent = ConveyorVisualComponentsByData.Find(ConveyorData))
+	{
+		return *ExistingComponent;
+	}
+
+	const FName ComponentName = MakeUniqueObjectName(
+		this,
+		UHierarchicalInstancedStaticMeshComponent::StaticClass(),
+		*FString::Printf(TEXT("ConveyorVisual_%s"), *ConveyorData->GetName())
+	);
+
+	UHierarchicalInstancedStaticMeshComponent* ConveyorVisualComponent = NewObject<UHierarchicalInstancedStaticMeshComponent>(this, ComponentName);
+	if (!ConveyorVisualComponent)
+	{
+		return nullptr;
+	}
+
+	ConveyorVisualComponent->SetupAttachment(TransformComponent);
+	ConveyorVisualComponent->SetStaticMesh(ConveyorData->ConveyorMesh);
+	ConveyorVisualComponent->RegisterComponent();
+	AddInstanceComponent(ConveyorVisualComponent);
+
+	ConveyorVisualComponentsByData.Add(ConveyorData, ConveyorVisualComponent);
+	return ConveyorVisualComponent;
+}
+
+int32 AFactoryManager::AddConveyorVisual(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& Coord, EFactoryDirection Direction)
+{
+	UHierarchicalInstancedStaticMeshComponent* ConveyorVisualComponent = GetOrCreateConveyorVisualComponent(ConveyorData);
+	if (!ConveyorVisualComponent)
+	{
+		return INDEX_NONE;
+	}
+
+	const FTransform InstanceTransform(
+		FRotator(0.0f, DirectionToYaw(Direction) + ConveyorData->ConveyorMeshYawOffset, 0.0f),
+		GridCellCenterToWorld(Coord),
+		FVector::OneVector
+	);
+
+	return ConveyorVisualComponent->AddInstance(InstanceTransform, true);
+}
+
+void AFactoryManager::RepairConveyorVisualInstanceIndices(UFactoryBuildingDataAsset* ConveyorData)
+{
+	if (!ConveyorData)
+	{
+		return;
+	}
+
+	UHierarchicalInstancedStaticMeshComponent** VisualComponent = ConveyorVisualComponentsByData.Find(ConveyorData);
+	if (!VisualComponent || !*VisualComponent)
+	{
+		return;
+	}
+
+	for (TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
+	{
+		FFactoryConveyorSegment& ConveyorSegment = ConveyorPair.Value;
+		if (ConveyorSegment.ConveyorData != ConveyorData)
+		{
+			continue;
+		}
+
+		const FVector ExpectedLocation = GridCellCenterToWorld(ConveyorSegment.Coord);
+		ConveyorSegment.VisualInstanceIndex = INDEX_NONE;
+
+		const int32 InstanceCount = (*VisualComponent)->GetInstanceCount();
+		for (int32 InstanceIndex = 0; InstanceIndex < InstanceCount; ++InstanceIndex)
+		{
+			FTransform InstanceTransform;
+			if (!(*VisualComponent)->GetInstanceTransform(InstanceIndex, InstanceTransform, true))
+			{
+				continue;
+			}
+
+			if (InstanceTransform.GetLocation().Equals(ExpectedLocation, 1.0f))
+			{
+				ConveyorSegment.VisualInstanceIndex = InstanceIndex;
+				break;
+			}
+		}
+	}
+}
+
+float AFactoryManager::DirectionToYaw(EFactoryDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EFactoryDirection::Up:
+		return 0.0f;
+	case EFactoryDirection::Right:
+		return 90.0f;
+	case EFactoryDirection::Down:
+		return 180.0f;
+	case EFactoryDirection::Left:
+		return 270.0f;
+	case EFactoryDirection::None:
+	default:
+		return 0.0f;
+	}
 }
 
 void AFactoryManager::UpdateHoveredCellFromMouseRaycast()

@@ -5,6 +5,8 @@
 #include "Grid/GridCoord.h"
 #include "FactoryConveyorTypes.generated.h"
 
+class UFactoryBuildingDataAsset;
+
 USTRUCT(BlueprintType)
 struct FFactoryConveyorSegment
 {
@@ -17,10 +19,16 @@ struct FFactoryConveyorSegment
 	EFactoryDirection Direction = EFactoryDirection::None;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	int32 SegmentId = -1;
+	TObjectPtr<UFactoryBuildingDataAsset> ConveyorData;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	int32 NextSegmentId = -1;
+	int32 VisualInstanceIndex = INDEX_NONE;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	bool bHasNextCoord = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FGridCoord NextCoord;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	int32 CurrentItemId = -1;

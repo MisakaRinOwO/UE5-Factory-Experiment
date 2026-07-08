@@ -7,6 +7,7 @@
 #include "FactoryBuildingDataAsset.generated.h"
 
 class AFactoryBuilding;
+class UStaticMesh;
 
 UCLASS(BlueprintType)
 class FACTORYEXPERIMENT_API UFactoryBuildingDataAsset : public UDataAsset
@@ -14,21 +15,33 @@ class FACTORYEXPERIMENT_API UFactoryBuildingDataAsset : public UDataAsset
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	FName BuildingTypeId;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
+	EFactoryBuildableType BuildableType = EFactoryBuildableType::Machine;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TSubclassOf<AFactoryBuilding> BuildingActorClass;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	FIntPoint FootprintSize = FIntPoint(1, 1);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine", meta = (EditCondition = "!bIsConveyor"))
 	TArray<FFactoryBuildingPort> Ports;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	bool bIsConveyor = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "bIsConveyor"))
+	TObjectPtr<UStaticMesh> ConveyorMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "bIsConveyor"))
+	float ConveyorMeshYawOffset = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "bIsConveyor"))
+	float ConveyorSpeed = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine", meta = (EditCondition = "!bIsConveyor"))
 	FName DefaultRecipeId;
 };

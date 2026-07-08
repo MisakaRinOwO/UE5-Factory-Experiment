@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Grid/GridCoord.h"
 #include "FactoryItemTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -32,7 +33,10 @@ struct FFactoryItemPacket
 	FName ItemTypeId;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	int32 CurrentConveyorId = -1;
+	bool bHasCurrentConveyorCoord = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FGridCoord CurrentConveyorCoord;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	float Progress = 0.0f;

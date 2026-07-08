@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Factory/FactoryTypes.h"
+#include "Grid/GridCoord.h"
 #include "FactoryGridTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -19,7 +20,7 @@ struct FFactoryGridCell
 	int32 BuildingId = -1;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	int32 ConveyorId = -1;
+	FGridCoord ConveyorCoord;
 
 	bool IsEmpty() const
 	{

@@ -13,6 +13,7 @@
 #include "FactoryManager.generated.h"
 
 class AFactoryBuilding;
+class UHierarchicalInstancedStaticMeshComponent;
 class USceneComponent;
 class UFactoryBuildingDataAsset;
 class UFactoryDeveloperModeWidget;
@@ -76,7 +77,9 @@ private:
 	TArray<FFactoryMachineRuntimeData> MachineRuntimeData;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
-	TArray<FFactoryConveyorSegment> Conveyors;
+	TMap<FGridCoord, FFactoryConveyorSegment> ConveyorsByCellCoord;
+
+	TMap<UFactoryBuildingDataAsset*, UHierarchicalInstancedStaticMeshComponent*> ConveyorVisualComponentsByData;
 
 	FTimerHandle SimulationTimerHandle;
 
@@ -115,6 +118,18 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
 	bool TryPlaceSelectedBuilding(const FGridCoord& OriginCoord);
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	bool RemoveBuildableAtHoveredCell();
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	bool RemoveBuildableAtCoord(const FGridCoord& Coord);
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	bool RemoveConveyorAtHoveredCell();
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
+	bool RemoveConveyorAtCoord(const FGridCoord& Coord);
 
 	UFUNCTION(BlueprintCallable, Category = "Factory|Placement")
 	void RotateBuildDirectionClockwise();
@@ -160,6 +175,11 @@ private:
 	void CreateInitialChunks();
 	bool TryPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction);
 	bool CanPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
+	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
+	UHierarchicalInstancedStaticMeshComponent* GetOrCreateConveyorVisualComponent(UFactoryBuildingDataAsset* ConveyorData);
+	int32 AddConveyorVisual(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& Coord, EFactoryDirection Direction);
+	void RepairConveyorVisualInstanceIndices(UFactoryBuildingDataAsset* ConveyorData);
+	float DirectionToYaw(EFactoryDirection Direction) const;
 	void UpdateHoveredCellFromMouseRaycast();
 	bool TryGetMouseRaycastGridCoord(FGridCoord& OutCoord) const;
 	void SetHoveredCell(const FGridCoord& Coord);
