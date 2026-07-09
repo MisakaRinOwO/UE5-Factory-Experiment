@@ -12,3 +12,8 @@ void AFactoryBuilding::InitializeBuilding(int32 InBuildingId, FGridCoord InOrigi
 
 	BP_OnBuildingInitialized();
 }
+
+void AFactoryBuilding::SetWorldPorts(const TArray<FFactoryPlacedBuildingPort>& InWorldPorts)
+{
+	WorldPorts = InWorldPorts;
+}

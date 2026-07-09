@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Factory/Buildings/FactoryBuildingTypes.h"
 #include "GameFramework/Actor.h"
 #include "Grid/GridCoord.h"
 #include "FactoryBuilding.generated.h"
@@ -24,8 +25,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UFactoryBuildingDataAsset> BuildingDefinition;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<FFactoryPlacedBuildingPort> WorldPorts;
+
 	UFUNCTION(BlueprintCallable)
 	virtual void InitializeBuilding(int32 InBuildingId, FGridCoord InOriginCoord);
+
+	UFUNCTION(BlueprintCallable)
+	void SetWorldPorts(const TArray<FFactoryPlacedBuildingPort>& InWorldPorts);
 
 	UFUNCTION(BlueprintImplementableEvent)
 	void BP_OnBuildingInitialized();

@@ -21,13 +21,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	EFactoryBuildableType BuildableType = EFactoryBuildableType::Machine;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory", meta = (EditCondition = "!bIsConveyor"))
 	TSubclassOf<AFactoryBuilding> BuildingActorClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	FIntPoint FootprintSize = FIntPoint(1, 1);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine", meta = (EditCondition = "!bIsConveyor"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TArray<FFactoryBuildingPort> Ports;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")

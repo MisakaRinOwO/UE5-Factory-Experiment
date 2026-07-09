@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Factory/Buildings/FactoryBuildingTypes.h"
 #include "Factory/FactoryTypes.h"
 #include "Grid/GridCoord.h"
 #include "FactoryConveyorTypes.generated.h"
@@ -20,6 +21,9 @@ struct FFactoryConveyorSegment
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UFactoryBuildingDataAsset> ConveyorData;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<FFactoryPlacedBuildingPort> WorldPorts;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	int32 VisualInstanceIndex = INDEX_NONE;

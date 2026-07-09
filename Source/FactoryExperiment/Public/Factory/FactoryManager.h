@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "TimerManager.h"
 
+#include "Factory/Buildings/FactoryBuildingTypes.h"
 #include "Factory/Buildings/FactoryMachineTypes.h"
 #include "Factory/Conveyor/FactoryConveyorTypes.h"
 #include "Factory/Debug/FactoryDebugTypes.h"
@@ -75,6 +76,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TArray<FFactoryMachineRuntimeData> MachineRuntimeData;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
+	TMap<FGridCoord, FFactoryPlacedBuildingInstance> BuildingInstancesByCellCoord;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TMap<FGridCoord, FFactoryConveyorSegment> ConveyorsByCellCoord;
@@ -177,6 +181,10 @@ private:
 	bool TryPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction);
 	bool CanPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
 	int32 RegisterBuildingActor(AFactoryBuilding* Building);
+	TArray<FGridCoord> BuildFootprintWorldCoords(const UFactoryBuildingDataAsset* BuildingData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
+	TArray<FFactoryPlacedBuildingPort> BuildWorldPorts(const UFactoryBuildingDataAsset* BuildingData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
+	bool IsLocalCoordInsideFootprint(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize) const;
+	bool IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port, const FIntPoint& FootprintSize) const;
 
 	// Removal internals
 	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
@@ -207,6 +215,10 @@ private:
 	FVector GridCellCenterToWorld(const FGridCoord& Coord) const;
 	FVector GridBoundaryToWorld(float BoundaryX, float BoundaryY) const;
 
+	FGridCoord DirectionToGridOffset(EFactoryDirection Direction) const;
+	FGridCoord RotateLocalCoord(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize, EFactoryDirection Direction) const;
+	FIntPoint GetRotatedFootprintSize(const FIntPoint& FootprintSize, EFactoryDirection Direction) const;
+	EFactoryDirection RotateDirection(EFactoryDirection BaseDirection, EFactoryDirection BuildDirection) const;
 	FGridCoord WorldCoordToChunkCoord(const FGridCoord& WorldCoord) const;
 	FGridCoord WorldCoordToLocalCoord(const FGridCoord& WorldCoord) const;
 

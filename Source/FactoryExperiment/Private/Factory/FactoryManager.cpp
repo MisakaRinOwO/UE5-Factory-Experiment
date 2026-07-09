@@ -110,31 +110,33 @@ bool AFactoryManager::TryPlaceBuilding(
 	}
 
 	const int32 BuildingId = RegisterBuildingActor(BuildingActor);
+	const TArray<FGridCoord> OccupiedCoords = BuildFootprintWorldCoords(BuildingData, OriginCoord, Direction);
+	const TArray<FFactoryPlacedBuildingPort> WorldPorts = BuildWorldPorts(BuildingData, OriginCoord, Direction);
 
 	BuildingActor->BuildingDefinition = BuildingData;
 	BuildingActor->InitializeBuilding(BuildingId, OriginCoord);
+	BuildingActor->SetWorldPorts(WorldPorts);
 
-	for (int32 LocalY = 0; LocalY < BuildingData->FootprintSize.Y; ++LocalY)
+	FFactoryPlacedBuildingInstance BuildingInstance;
+	BuildingInstance.BuildingActor = BuildingActor;
+	BuildingInstance.BuildingData = BuildingData;
+	BuildingInstance.OriginCoord = OriginCoord;
+	BuildingInstance.Direction = Direction;
+	BuildingInstance.OccupiedCoords = OccupiedCoords;
+	BuildingInstance.WorldPorts = WorldPorts;
+
+	for (const FGridCoord& CellCoord : OccupiedCoords)
 	{
-		for (int32 LocalX = 0; LocalX < BuildingData->FootprintSize.X; ++LocalX)
+		FFactoryGridCell* Cell = GetOrCreateCell(CellCoord);
+		if (!Cell)
 		{
-			const FGridCoord CellCoord(
-				OriginCoord.X + LocalX,
-				OriginCoord.Y + LocalY
-			);
-
-			FFactoryGridCell* Cell = GetOrCreateCell(CellCoord);
-			if (!Cell)
-			{
-				continue;
-			}
-
-			Cell->Occupancy = BuildingData->bIsConveyor
-				? EFactoryCellOccupancy::Conveyor
-				: EFactoryCellOccupancy::Building;
-			Cell->Direction = Direction;
-			Cell->BuildingId = BuildingId;
+			continue;
 		}
+
+		Cell->Occupancy = EFactoryCellOccupancy::Building;
+		Cell->Direction = Direction;
+		Cell->BuildingId = BuildingId;
+		BuildingInstancesByCellCoord.Add(CellCoord, BuildingInstance);
 	}
 
 	if (!BuildingData->bIsConveyor)
@@ -150,10 +152,34 @@ bool AFactoryManager::TryPlaceBuilding(
 	return true;
 }
 
+TArray<FGridCoord> AFactoryManager::BuildFootprintWorldCoords(
+	const UFactoryBuildingDataAsset* BuildingData,
+	const FGridCoord& OriginCoord,
+	EFactoryDirection Direction
+) const
+{
+	TArray<FGridCoord> WorldCoords;
+	if (!BuildingData)
+	{
+		return WorldCoords;
+	}
+
+	for (int32 LocalY = 0; LocalY < BuildingData->FootprintSize.Y; ++LocalY)
+	{
+		for (int32 LocalX = 0; LocalX < BuildingData->FootprintSize.X; ++LocalX)
+		{
+			const FGridCoord RotatedLocalCoord = RotateLocalCoord(FGridCoord(LocalX, LocalY), BuildingData->FootprintSize, Direction);
+			WorldCoords.Add(FGridCoord(OriginCoord.X + RotatedLocalCoord.X, OriginCoord.Y + RotatedLocalCoord.Y));
+		}
+	}
+
+	return WorldCoords;
+}
+
 bool AFactoryManager::CanPlaceBuilding(
 	const UFactoryBuildingDataAsset* BuildingData,
 	const FGridCoord& OriginCoord,
-	EFactoryDirection /*Direction*/
+	EFactoryDirection Direction
 ) const
 {
 	if (!BuildingData || BuildingData->FootprintSize.X <= 0 || BuildingData->FootprintSize.Y <= 0)
@@ -161,23 +187,67 @@ bool AFactoryManager::CanPlaceBuilding(
 		return false;
 	}
 
-	for (int32 LocalY = 0; LocalY < BuildingData->FootprintSize.Y; ++LocalY)
+	for (const FGridCoord& CellCoord : BuildFootprintWorldCoords(BuildingData, OriginCoord, Direction))
 	{
-		for (int32 LocalX = 0; LocalX < BuildingData->FootprintSize.X; ++LocalX)
+		if (IsCellOccupied(CellCoord))
 		{
-			const FGridCoord CellCoord(
-				OriginCoord.X + LocalX,
-				OriginCoord.Y + LocalY
-			);
-
-			if (IsCellOccupied(CellCoord))
-			{
-				return false;
-			}
+			return false;
 		}
 	}
 
 	return true;
+}
+
+TArray<FFactoryPlacedBuildingPort> AFactoryManager::BuildWorldPorts(
+	const UFactoryBuildingDataAsset* BuildingData,
+	const FGridCoord& OriginCoord,
+	EFactoryDirection Direction
+) const
+{
+	TArray<FFactoryPlacedBuildingPort> WorldPorts;
+	if (!BuildingData)
+	{
+		return WorldPorts;
+	}
+
+	for (const FFactoryBuildingPort& Port : BuildingData->Ports)
+	{
+		if (!IsPortOnFootprintBoundary(Port, BuildingData->FootprintSize))
+		{
+			continue;
+		}
+
+		const FGridCoord RotatedLocalCoord = RotateLocalCoord(Port.LocalCoord, BuildingData->FootprintSize, Direction);
+
+		FFactoryPlacedBuildingPort WorldPort;
+		WorldPort.WorldCoord = FGridCoord(OriginCoord.X + RotatedLocalCoord.X, OriginCoord.Y + RotatedLocalCoord.Y);
+		WorldPort.Direction = RotateDirection(Port.Direction, Direction);
+		WorldPort.PortType = Port.PortType;
+		WorldPort.AcceptedItemId = Port.AcceptedItemId;
+		WorldPorts.Add(WorldPort);
+	}
+
+	return WorldPorts;
+}
+
+bool AFactoryManager::IsLocalCoordInsideFootprint(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize) const
+{
+	return LocalCoord.X >= 0
+		&& LocalCoord.Y >= 0
+		&& LocalCoord.X < FootprintSize.X
+		&& LocalCoord.Y < FootprintSize.Y;
+}
+
+bool AFactoryManager::IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port, const FIntPoint& FootprintSize) const
+{
+	if (!IsLocalCoordInsideFootprint(Port.LocalCoord, FootprintSize) || Port.Direction == EFactoryDirection::None)
+	{
+		return false;
+	}
+
+	const FGridCoord DirectionOffset = DirectionToGridOffset(Port.Direction);
+	const FGridCoord NeighborCoord(Port.LocalCoord.X + DirectionOffset.X, Port.LocalCoord.Y + DirectionOffset.Y);
+	return !IsLocalCoordInsideFootprint(NeighborCoord, FootprintSize);
 }
 
 bool AFactoryManager::IsCellOccupied(const FGridCoord& Coord) const
@@ -336,45 +406,30 @@ bool AFactoryManager::RemoveConveyorAtCoord(const FGridCoord& Coord)
 
 bool AFactoryManager::RemoveBuildingAtCoord(const FGridCoord& Coord)
 {
-	const FFactoryGridCell* SourceCell = GetCell(Coord);
-	if (!SourceCell || SourceCell->Occupancy != EFactoryCellOccupancy::Building || SourceCell->BuildingId == INDEX_NONE)
+	const FFactoryPlacedBuildingInstance* RemovedInstance = BuildingInstancesByCellCoord.Find(Coord);
+	if (!RemovedInstance || !RemovedInstance->BuildingActor)
 	{
 		return false;
 	}
 
-	const int32 BuildingId = SourceCell->BuildingId;
-	if (!BuildingActors.IsValidIndex(BuildingId) || !BuildingActors[BuildingId])
-	{
-		return false;
-	}
+	const FFactoryPlacedBuildingInstance RemovedInstanceCopy = *RemovedInstance;
+	AFactoryBuilding* BuildingActor = RemovedInstanceCopy.BuildingActor;
+	const int32 BuildingId = BuildingActor->BuildingId;
 
-	AFactoryBuilding* BuildingActor = BuildingActors[BuildingId];
-	const UFactoryBuildingDataAsset* BuildingData = BuildingActor->BuildingDefinition;
-	if (!BuildingData)
+	for (const FGridCoord& CellCoord : RemovedInstanceCopy.OccupiedCoords)
 	{
-		return false;
-	}
+		BuildingInstancesByCellCoord.Remove(CellCoord);
 
-	for (int32 LocalY = 0; LocalY < BuildingData->FootprintSize.Y; ++LocalY)
-	{
-		for (int32 LocalX = 0; LocalX < BuildingData->FootprintSize.X; ++LocalX)
+		FFactoryGridCell* Cell = GetOrCreateCell(CellCoord);
+		if (!Cell || Cell->BuildingId != BuildingId)
 		{
-			const FGridCoord CellCoord(
-				BuildingActor->OriginCoord.X + LocalX,
-				BuildingActor->OriginCoord.Y + LocalY
-			);
-
-			FFactoryGridCell* Cell = GetOrCreateCell(CellCoord);
-			if (!Cell || Cell->BuildingId != BuildingId)
-			{
-				continue;
-			}
-
-			Cell->Occupancy = EFactoryCellOccupancy::Empty;
-			Cell->Direction = EFactoryDirection::None;
-			Cell->BuildingId = INDEX_NONE;
-			Cell->ConveyorCoord = FGridCoord();
+			continue;
 		}
+
+		Cell->Occupancy = EFactoryCellOccupancy::Empty;
+		Cell->Direction = EFactoryDirection::None;
+		Cell->BuildingId = INDEX_NONE;
+		Cell->ConveyorCoord = FGridCoord();
 	}
 
 	MachineRuntimeData.RemoveAllSwap(
@@ -561,6 +616,7 @@ bool AFactoryManager::TryPlaceConveyor(
 	ConveyorSegment.Coord = OriginCoord;
 	ConveyorSegment.Direction = Direction;
 	ConveyorSegment.ConveyorData = ConveyorData;
+	ConveyorSegment.WorldPorts = BuildWorldPorts(ConveyorData, OriginCoord, Direction);
 	ConveyorSegment.VisualInstanceIndex = AddConveyorVisual(ConveyorData, OriginCoord, Direction);
 	ConveyorsByCellCoord.Add(OriginCoord, ConveyorSegment);
 
@@ -927,6 +983,70 @@ FVector AFactoryManager::GridCellCenterToWorld(const FGridCoord& Coord) const
 FVector AFactoryManager::GridBoundaryToWorld(float BoundaryX, float BoundaryY) const
 {
 	return GetActorLocation() + FVector(BoundaryX * CellSize, BoundaryY * CellSize, DebugGridZOffset);
+}
+
+FGridCoord AFactoryManager::DirectionToGridOffset(EFactoryDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EFactoryDirection::Up:
+		return FGridCoord(1, 0);
+	case EFactoryDirection::Right:
+		return FGridCoord(0, 1);
+	case EFactoryDirection::Down:
+		return FGridCoord(-1, 0);
+	case EFactoryDirection::Left:
+		return FGridCoord(0, -1);
+	case EFactoryDirection::None:
+	default:
+		return FGridCoord(0, 0);
+	}
+}
+
+FGridCoord AFactoryManager::RotateLocalCoord(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize, EFactoryDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EFactoryDirection::Up:
+	case EFactoryDirection::None:
+		return LocalCoord;
+	case EFactoryDirection::Right:
+		return FGridCoord(LocalCoord.Y, FootprintSize.X - 1 - LocalCoord.X);
+	case EFactoryDirection::Down:
+		return FGridCoord(FootprintSize.X - 1 - LocalCoord.X, FootprintSize.Y - 1 - LocalCoord.Y);
+	case EFactoryDirection::Left:
+		return FGridCoord(FootprintSize.Y - 1 - LocalCoord.Y, LocalCoord.X);
+	default:
+		return LocalCoord;
+	}
+}
+
+FIntPoint AFactoryManager::GetRotatedFootprintSize(const FIntPoint& FootprintSize, EFactoryDirection Direction) const
+{
+	if (Direction == EFactoryDirection::Right || Direction == EFactoryDirection::Left)
+	{
+		return FIntPoint(FootprintSize.Y, FootprintSize.X);
+	}
+
+	return FootprintSize;
+}
+
+EFactoryDirection AFactoryManager::RotateDirection(EFactoryDirection BaseDirection, EFactoryDirection BuildDirection) const
+{
+	switch (BuildDirection)
+	{
+	case EFactoryDirection::Up:
+	case EFactoryDirection::None:
+		return BaseDirection;
+	case EFactoryDirection::Right:
+		return GetClockwiseDirection(BaseDirection);
+	case EFactoryDirection::Down:
+		return GetClockwiseDirection(GetClockwiseDirection(BaseDirection));
+	case EFactoryDirection::Left:
+		return GetCounterClockwiseDirection(BaseDirection);
+	default:
+		return BaseDirection;
+	}
 }
 
 FGridCoord AFactoryManager::WorldCoordToChunkCoord(const FGridCoord& WorldCoord) const
