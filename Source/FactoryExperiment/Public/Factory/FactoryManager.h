@@ -167,38 +167,48 @@ public:
 private:
 	static constexpr float CellSize = 100.0f;
 
+	// Simulation
 	void SimulationStep();
-
 	void UpdateMachines(float DeltaTime);
 	void UpdateConveyors(float DeltaTime);
 
+	// Placement internals
 	void CreateInitialChunks();
 	bool TryPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction);
 	bool CanPlaceConveyor(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
+	int32 RegisterBuildingActor(AFactoryBuilding* Building);
+
+	// Removal internals
 	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
+
+	// Conveyor visuals
 	UHierarchicalInstancedStaticMeshComponent* GetOrCreateConveyorVisualComponent(UFactoryBuildingDataAsset* ConveyorData);
 	int32 AddConveyorVisual(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& Coord, EFactoryDirection Direction);
 	void RepairConveyorVisualInstanceIndices(UFactoryBuildingDataAsset* ConveyorData);
 	float DirectionToYaw(EFactoryDirection Direction) const;
+
+	// Hover and UI
 	void UpdateHoveredCellFromMouseRaycast();
+	void RefreshHoveredCellFromMouseRaycast(bool bForceUpdate);
 	bool TryGetMouseRaycastGridCoord(FGridCoord& OutCoord) const;
 	void SetHoveredCell(const FGridCoord& Coord);
 	void ClearHoveredCell();
 	void UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoord);
+
+	// Debug drawing
 	void DrawDebugGrid() const;
 	void DrawDebugCellGridForChunk(const FGridCoord& ChunkCoord) const;
 	void DrawDebugChunkBounds(const FGridCoord& ChunkCoord) const;
 	void DrawDebugCellBounds(const FGridCoord& Coord, const FColor& Color, float Thickness) const;
 	void DrawDebugCellBounds(const FGridCoord& MinCoord, const FGridCoord& MaxCoord, const FColor& Color, float Thickness) const;
 
+	// Grid helpers
 	FGridCoord WorldLocationToGridCoord(const FVector& WorldLocation) const;
 	FVector GridCellCenterToWorld(const FGridCoord& Coord) const;
 	FVector GridBoundaryToWorld(float BoundaryX, float BoundaryY) const;
 
 	FGridCoord WorldCoordToChunkCoord(const FGridCoord& WorldCoord) const;
 	FGridCoord WorldCoordToLocalCoord(const FGridCoord& WorldCoord) const;
-
-	int32 RegisterBuildingActor(AFactoryBuilding* Building);
 
 	bool bHasDebugHoveredCell = false;
 	bool bHasHoveredCell = false;
