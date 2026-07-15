@@ -19,6 +19,7 @@ class USceneComponent;
 class UFactoryBuildingDataAsset;
 class UFactoryDeveloperModeWidget;
 class UFactoryRecipeDataAsset;
+class UFactoryResourceMapDataAsset;
 class UUserWidget;
 
 UCLASS()
@@ -36,6 +37,9 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<UFactoryRecipeDataAsset> RecipeDatabase;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
+	TObjectPtr<UFactoryResourceMapDataAsset> ResourceMapData;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<USceneComponent> TransformComponent;
