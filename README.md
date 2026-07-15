@@ -24,13 +24,25 @@ Implemented / added so far:
 - FactoryPawn.
 - Enhanced Input Actions.
 - Input Mapping Context.
-- Reused top-down pawn control/view direction from the earlier Void Architect work.
+- Reused top-down pawn control/view direction from earlier Void Architect work.
 - Reused prior grid-cell struct style from the Grid Experiment.
-- Factory architecture planning for chunked grid, conveyors, buildings, and simulation.
+- Chunked square-grid storage with negative coordinate support.
+- Hover cell/chunk debug UI and debug drawing.
+- Manual buildable selection and placement.
+- Number-key building selection for conveyor/miner.
+- `R` key clockwise build direction rotation.
+- Data-asset driven miner and conveyor definitions with runtime world ports.
+- HISM conveyor visuals.
+- Resource map data asset for initial raw resource distribution.
+- Miner extraction from resource map cells.
+- Round-robin miner output across unblocked connected output conveyors.
+- Fixed-step conveyor item/resource movement.
+- Resource visual data asset for resource mesh feedback.
+- Smooth per-frame resource visual interpolation over fixed-step simulation movement.
 
 Immediate next step:
 
-- Implement chunk coordinate conversion and hover debug using `DrawDebugString`.
+- Extend the first production chain beyond miner output by adding assembler/storage input, recipe processing, and output buffering.
 
 ## Core Design Direction
 
@@ -44,7 +56,7 @@ Default chunk configuration:
 ChunkSize = 32x32
 ```
 
-The chunk size should be adjustable from `FactoryManager`.
+The chunk size is currently compile-time fixed for MVP stability.
 
 The world supports negative grid coordinates. `FactoryManager` is treated as the center of grid cell `(0, 0)`, and the world expands outward from there.
 
@@ -79,7 +91,7 @@ Factory cells should stay lightweight:
 Occupancy
 Direction
 BuildingId
-ConveyorId
+ConveyorCoord
 ```
 
 Cells should not own heavy runtime data such as full machine inventory, recipe state, or actor-owned simulation logic.
@@ -114,6 +126,14 @@ Miner -> Conveyor -> Assembler -> Storage
 
 Machine inventory starts as simple input/output arrays. Per-port buffers can be added later after the full simulation loop works.
 
+Current working slice:
+
+```text
+Resource Map -> Miner -> Conveyor
+```
+
+The miner is currently treated as a 1x1 extractor. Larger miners may later scale output by resource coverage ratio.
+
 ### Conveyors
 
 Conveyors use 4-direction movement:
@@ -129,6 +149,8 @@ First version:
 - Conveyor visuals use Instanced Static Mesh / Hierarchical Instanced Static Mesh.
 - One HISM component for straight conveyor visuals is enough for MVP.
 - Direction is represented by instance transform rotation.
+- Connection uses DA-authored runtime world ports.
+- Runtime identity is grid coordinate, not actor id or HISM instance index.
 
 Conveyors are stored as data structs rather than one Actor per conveyor segment.
 
@@ -154,6 +176,12 @@ Update active item packets
 
 The system should avoid iterating every cell in every chunk during simulation.
 
+Current resource movement:
+
+- Miner output is updated by the centralized simulation timer.
+- Conveyor data advances at the fixed simulation step.
+- Resource mesh visuals interpolate per frame between conveyor cells.
+
 ## Input and Control
 
 The project has the basic input/control layer:
@@ -174,7 +202,7 @@ FactoryPawn:
 
 FactoryPlayerController:
   Enhanced Input setup, input action binding, mouse/grid hover query,
-  placement command routing, R-key rotation command
+  placement command routing, number-key buildable selection, R-key rotation command
 
 FactoryManager:
   grid conversion, chunk/cell query, placement, simulation, debug output
@@ -233,18 +261,26 @@ Later debug additions may include:
 - Active conveyor count
 - Simulation step counter
 
+Current developer UI also reports:
+
+- Hovered resource type.
+- Current buildable selection.
+- Current build direction.
+- Building type id for occupied cells.
+
 ## Planned MVP Milestones
 
-1. Validate GameMode / PlayerController / FactoryPawn / IA / IMC setup.
-2. Implement chunk coordinate conversion.
-3. Implement `GetCell` and `GetOrCreateCell`.
-4. Add hover debug with `DrawDebugString`.
-5. Add manual conveyor placement.
-6. Add HISM conveyor visuals.
-7. Add Miner / Assembler / Storage placement.
-8. Add centralized 0.2s simulation timer.
-9. Implement simple item transfer and machine crafting.
-10. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
+1. Validate GameMode / PlayerController / FactoryPawn / IA / IMC setup. Done.
+2. Implement chunk coordinate conversion. Done.
+3. Implement `GetCell` and `GetOrCreateCell`. Done.
+4. Add hover debug and developer UI. Done.
+5. Add manual conveyor/miner placement. Done.
+6. Add HISM conveyor visuals. Done.
+7. Add centralized 0.2s simulation timer. Done.
+8. Implement miner extraction and conveyor item transfer. Done.
+9. Add smooth resource visual feedback. Done.
+10. Implement assembler/storage recipe processing.
+11. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
 
 ## Portfolio Focus
 

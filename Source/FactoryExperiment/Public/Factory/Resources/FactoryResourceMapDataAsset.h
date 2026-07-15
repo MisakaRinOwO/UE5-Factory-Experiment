@@ -9,8 +9,8 @@ UENUM(BlueprintType)
 enum class EFactoryResourceType : uint8
 {
 	None UMETA(DisplayName = "None"),
-	Iron UMETA(DisplayName = "Iron"),
-	Copper UMETA(DisplayName = "Copper"),
+	IronOre UMETA(DisplayName = "Iron Ore"),
+	CopperOre UMETA(DisplayName = "Copper Ore"),
 	IronIngot UMETA(DisplayName = "Iron Ingot"),
 	IronPlate UMETA(DisplayName = "Iron Plate"),
 	IronRod UMETA(DisplayName = "Iron Rod"),

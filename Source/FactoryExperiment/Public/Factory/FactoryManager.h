@@ -9,6 +9,7 @@
 #include "Factory/Conveyor/FactoryConveyorTypes.h"
 #include "Factory/Debug/FactoryDebugTypes.h"
 #include "Factory/Grid/FactoryGridTypes.h"
+#include "Factory/Resources/FactoryResourceMapDataAsset.h"
 #include "Grid/GridCoord.h"
 
 #include "FactoryManager.generated.h"
@@ -20,6 +21,7 @@ class UFactoryBuildingDataAsset;
 class UFactoryDeveloperModeWidget;
 class UFactoryRecipeDataAsset;
 class UFactoryResourceMapDataAsset;
+class UFactoryResourceVisualDataAsset;
 class UUserWidget;
 
 UCLASS()
@@ -40,6 +42,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<UFactoryResourceMapDataAsset> ResourceMapData;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
+	TObjectPtr<UFactoryResourceVisualDataAsset> ResourceVisualData;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<USceneComponent> TransformComponent;
@@ -88,6 +93,8 @@ private:
 	TMap<FGridCoord, FFactoryConveyorSegment> ConveyorsByCellCoord;
 
 	TMap<UFactoryBuildingDataAsset*, UHierarchicalInstancedStaticMeshComponent*> ConveyorVisualComponentsByData;
+
+	TMap<EFactoryResourceType, UHierarchicalInstancedStaticMeshComponent*> ResourceVisualComponentsByType;
 
 	FTimerHandle SimulationTimerHandle;
 
@@ -179,6 +186,8 @@ private:
 	void SimulationStep();
 	void UpdateMachines(float DeltaTime);
 	void UpdateConveyors(float DeltaTime);
+	void UpdateResourceVisuals(float DeltaTime);
+	bool TryPushResourceToConveyor(const FGridCoord& SourceCoord, const FGridCoord& ConveyorCoord, EFactoryResourceType ResourceType);
 
 	// Placement internals
 	void CreateInitialChunks();
@@ -189,6 +198,9 @@ private:
 	TArray<FFactoryPlacedBuildingPort> BuildWorldPorts(const UFactoryBuildingDataAsset* BuildingData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
 	bool IsLocalCoordInsideFootprint(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize) const;
 	bool IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port, const FIntPoint& FootprintSize) const;
+	bool IsResourceExtractor(const UFactoryBuildingDataAsset* BuildingData) const;
+	EFactoryResourceType FindResourceAtCoord(const FGridCoord& Coord) const;
+	EFactoryResourceType FindExtractedResourceForBuilding(const FFactoryPlacedBuildingInstance& BuildingInstance) const;
 
 	// Removal internals
 	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
@@ -198,6 +210,16 @@ private:
 	int32 AddConveyorVisual(UFactoryBuildingDataAsset* ConveyorData, const FGridCoord& Coord, EFactoryDirection Direction);
 	void RepairConveyorVisualInstanceIndices(UFactoryBuildingDataAsset* ConveyorData);
 	float DirectionToYaw(EFactoryDirection Direction) const;
+	void RefreshConveyorConnectionAtCoord(const FGridCoord& Coord);
+	void RefreshConveyorConnectionsAroundCoord(const FGridCoord& Coord);
+	bool TryFindConveyorOutputTarget(const FFactoryConveyorSegment& ConveyorSegment, FGridCoord& OutTargetCoord) const;
+	bool HasCompatibleInputPort(const FFactoryConveyorSegment& ConveyorSegment, const FGridCoord& SourceCoord, EFactoryResourceType ResourceType) const;
+	bool DoesPortAcceptResource(const FFactoryPlacedBuildingPort& Port, EFactoryResourceType ResourceType) const;
+	UHierarchicalInstancedStaticMeshComponent* GetOrCreateResourceVisualComponent(EFactoryResourceType ResourceType);
+	int32 AddResourceVisual(EFactoryResourceType ResourceType, const FGridCoord& FromCoord, const FGridCoord& ToCoord);
+	void RemoveResourceVisual(EFactoryResourceType ResourceType, int32 InstanceIndex);
+	void RepairResourceVisualInstanceIndices(EFactoryResourceType ResourceType);
+	void SetResourceVisualTransform(EFactoryResourceType ResourceType, int32 InstanceIndex, const FVector& Location);
 
 	// Hover and UI
 	void UpdateHoveredCellFromMouseRaycast();
@@ -206,6 +228,7 @@ private:
 	void SetHoveredCell(const FGridCoord& Coord);
 	void ClearHoveredCell();
 	void UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoord);
+	void UpdateDeveloperModeSelectedBuildableDisplay();
 
 	// Debug drawing
 	void DrawDebugGrid() const;
@@ -213,6 +236,7 @@ private:
 	void DrawDebugChunkBounds(const FGridCoord& ChunkCoord) const;
 	void DrawDebugCellBounds(const FGridCoord& Coord, const FColor& Color, float Thickness) const;
 	void DrawDebugCellBounds(const FGridCoord& MinCoord, const FGridCoord& MaxCoord, const FColor& Color, float Thickness) const;
+	void DrawDebugConveyorState() const;
 
 	// Grid helpers
 	FGridCoord WorldLocationToGridCoord(const FVector& WorldLocation) const;

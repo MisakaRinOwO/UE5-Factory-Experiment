@@ -52,3 +52,7 @@ desktop.ini
 
 # Local AI/project memory context
 ai-context/
+!ai-context/
+ai-context/*
+!ai-context/codex/
+!ai-context/codex/*.md

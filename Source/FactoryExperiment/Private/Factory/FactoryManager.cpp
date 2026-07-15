@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "Factory/Buildings/FactoryBuilding.h"
 #include "Factory/Data/FactoryBuildingDataAsset.h"
+#include "Factory/Resources/FactoryResourceVisualDataAsset.h"
 #include "Factory/UI/FactoryDeveloperModeWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "GameFramework/PlayerController.h"
@@ -20,6 +21,7 @@ namespace
 	const FColor DebugCellColor(192, 192, 192);
 	const FColor DebugChunkColor(160, 32, 240);
 	const FColor DebugHoveredCellColor(0, 255, 0);
+	const FColor DebugConveyorItemColor(255, 192, 0);
 }
 
 AFactoryManager::AFactoryManager()
@@ -56,6 +58,8 @@ void AFactoryManager::Tick(float DeltaTime)
 	{
 		UpdateHoveredCellFromMouseRaycast();
 	}
+
+	UpdateResourceVisuals(DeltaTime);
 
 	if (bDrawDebugCells || bDrawDebugChunks || bDrawDebugHoveredCell)
 	{
@@ -143,7 +147,11 @@ bool AFactoryManager::TryPlaceBuilding(
 	{
 		FFactoryMachineRuntimeData RuntimeData;
 		RuntimeData.BuildingId = BuildingId;
+		RuntimeData.OriginCoord = OriginCoord;
+		RuntimeData.WorldPorts = WorldPorts;
 		RuntimeData.RecipeId = BuildingData->DefaultRecipeId;
+		RuntimeData.bIsExtractor = IsResourceExtractor(BuildingData);
+		RuntimeData.ExtractedResourceType = FindExtractedResourceForBuilding(BuildingInstance);
 		MachineRuntimeData.Add(RuntimeData);
 	}
 
@@ -250,6 +258,43 @@ bool AFactoryManager::IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port
 	return !IsLocalCoordInsideFootprint(NeighborCoord, FootprintSize);
 }
 
+bool AFactoryManager::IsResourceExtractor(const UFactoryBuildingDataAsset* BuildingData) const
+{
+	return BuildingData && BuildingData->BuildingTypeId == TEXT("Miner");
+}
+
+EFactoryResourceType AFactoryManager::FindResourceAtCoord(const FGridCoord& Coord) const
+{
+	if (!ResourceMapData)
+	{
+		return EFactoryResourceType::None;
+	}
+
+	for (const TPair<EFactoryResourceType, FFactoryResourceCoordList>& ResourcePair : ResourceMapData->ResourceCoordsByType)
+	{
+		if (ResourcePair.Value.Coords.Contains(Coord))
+		{
+			return ResourcePair.Key;
+		}
+	}
+
+	return EFactoryResourceType::None;
+}
+
+EFactoryResourceType AFactoryManager::FindExtractedResourceForBuilding(const FFactoryPlacedBuildingInstance& BuildingInstance) const
+{
+	for (const FGridCoord& Coord : BuildingInstance.OccupiedCoords)
+	{
+		const EFactoryResourceType ResourceType = FindResourceAtCoord(Coord);
+		if (ResourceType != EFactoryResourceType::None)
+		{
+			return ResourceType;
+		}
+	}
+
+	return EFactoryResourceType::None;
+}
+
 bool AFactoryManager::IsCellOccupied(const FGridCoord& Coord) const
 {
 	const FFactoryGridCell* Cell = GetCell(Coord);
@@ -278,11 +323,17 @@ bool AFactoryManager::IsCellValidForPath(const FGridCoord& Coord) const
 void AFactoryManager::SetSelectedBuilding(UFactoryBuildingDataAsset* BuildingData)
 {
 	SelectedBuilding = BuildingData;
+	UpdateDeveloperModeSelectedBuildableDisplay();
 }
 
 void AFactoryManager::ClearSelectedBuilding()
 {
 	SelectedBuilding = nullptr;
+
+	if (DeveloperModeWidget)
+	{
+		DeveloperModeWidget->ClearSelectedBuildable();
+	}
 }
 
 bool AFactoryManager::HasSelectedBuilding() const
@@ -393,6 +444,8 @@ bool AFactoryManager::RemoveConveyorAtCoord(const FGridCoord& Coord)
 		}
 	}
 
+	RemoveResourceVisual(RemovedSegment.CurrentResourceType, RemovedSegment.ResourceVisualInstanceIndex);
+
 	if (FFactoryGridCell* Cell = GetOrCreateCell(Coord))
 	{
 		Cell->Occupancy = EFactoryCellOccupancy::Empty;
@@ -400,6 +453,8 @@ bool AFactoryManager::RemoveConveyorAtCoord(const FGridCoord& Coord)
 		Cell->BuildingId = INDEX_NONE;
 		Cell->ConveyorCoord = FGridCoord();
 	}
+
+	RefreshConveyorConnectionsAroundCoord(Coord);
 
 	return true;
 }
@@ -450,11 +505,13 @@ bool AFactoryManager::RemoveBuildingAtCoord(const FGridCoord& Coord)
 void AFactoryManager::RotateBuildDirectionClockwise()
 {
 	CurrentBuildDirection = GetClockwiseDirection(CurrentBuildDirection);
+	UpdateDeveloperModeSelectedBuildableDisplay();
 }
 
 void AFactoryManager::RotateBuildDirectionCounterClockwise()
 {
 	CurrentBuildDirection = GetCounterClockwiseDirection(CurrentBuildDirection);
+	UpdateDeveloperModeSelectedBuildableDisplay();
 }
 
 EFactoryDirection AFactoryManager::GetClockwiseDirection(EFactoryDirection Direction) const
@@ -567,22 +624,187 @@ void AFactoryManager::SetDeveloperModeWidget(UFactoryDeveloperModeWidget* Widget
 	{
 		UpdateDeveloperModeCoordDisplay(HoveredCellCoord);
 	}
+
+	UpdateDeveloperModeSelectedBuildableDisplay();
 }
 
 // Simulation
 
 void AFactoryManager::SimulationStep()
 {
-	UpdateConveyors(SimulationStepInterval);
 	UpdateMachines(SimulationStepInterval);
+	UpdateConveyors(SimulationStepInterval);
 }
 
 void AFactoryManager::UpdateMachines(float /*DeltaTime*/)
 {
+	for (FFactoryMachineRuntimeData& RuntimeData : MachineRuntimeData)
+	{
+		if (!RuntimeData.bIsExtractor || RuntimeData.ExtractedResourceType == EFactoryResourceType::None)
+		{
+			continue;
+		}
+
+		TArray<const FFactoryPlacedBuildingPort*> OutputPorts;
+		for (const FFactoryPlacedBuildingPort& Port : RuntimeData.WorldPorts)
+		{
+			if (Port.PortType == EFactoryPortType::Output && DoesPortAcceptResource(Port, RuntimeData.ExtractedResourceType))
+			{
+				OutputPorts.Add(&Port);
+			}
+		}
+
+		if (OutputPorts.IsEmpty())
+		{
+			continue;
+		}
+
+		for (int32 AttemptIndex = 0; AttemptIndex < OutputPorts.Num(); ++AttemptIndex)
+		{
+			const int32 PortIndex = (RuntimeData.OutputRoundRobinIndex + AttemptIndex) % OutputPorts.Num();
+			const FFactoryPlacedBuildingPort* OutputPort = OutputPorts[PortIndex];
+			if (!OutputPort)
+			{
+				continue;
+			}
+
+			const FGridCoord TargetCoord(
+				OutputPort->WorldCoord.X + DirectionToGridOffset(OutputPort->Direction).X,
+				OutputPort->WorldCoord.Y + DirectionToGridOffset(OutputPort->Direction).Y
+			);
+
+			if (TryPushResourceToConveyor(OutputPort->WorldCoord, TargetCoord, RuntimeData.ExtractedResourceType))
+			{
+				RuntimeData.OutputRoundRobinIndex = (PortIndex + 1) % OutputPorts.Num();
+				break;
+			}
+		}
+	}
 }
 
 void AFactoryManager::UpdateConveyors(float /*DeltaTime*/)
 {
+	TMap<FGridCoord, EFactoryResourceType> ResourceSnapshot;
+	for (const TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
+	{
+		if (ConveyorPair.Value.CurrentResourceType != EFactoryResourceType::None)
+		{
+			ResourceSnapshot.Add(ConveyorPair.Key, ConveyorPair.Value.CurrentResourceType);
+		}
+	}
+
+	TMap<FGridCoord, EFactoryResourceType> PlannedMoves;
+	TSet<FGridCoord> ClaimedTargets;
+
+	for (const TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
+	{
+		const FFactoryConveyorSegment& ConveyorSegment = ConveyorPair.Value;
+		if (ConveyorSegment.CurrentResourceType == EFactoryResourceType::None || !ConveyorSegment.bHasNextCoord)
+		{
+			continue;
+		}
+
+		if (ResourceSnapshot.Contains(ConveyorSegment.NextCoord) || ClaimedTargets.Contains(ConveyorSegment.NextCoord))
+		{
+			continue;
+		}
+
+		const FFactoryConveyorSegment* TargetSegment = ConveyorsByCellCoord.Find(ConveyorSegment.NextCoord);
+		if (!TargetSegment || !HasCompatibleInputPort(*TargetSegment, ConveyorSegment.Coord, ConveyorSegment.CurrentResourceType))
+		{
+			continue;
+		}
+
+		PlannedMoves.Add(ConveyorPair.Key, ConveyorSegment.CurrentResourceType);
+		ClaimedTargets.Add(ConveyorSegment.NextCoord);
+	}
+
+	for (const TPair<FGridCoord, EFactoryResourceType>& MovePair : PlannedMoves)
+	{
+		FFactoryConveyorSegment* SourceSegment = ConveyorsByCellCoord.Find(MovePair.Key);
+		if (!SourceSegment || !SourceSegment->bHasNextCoord)
+		{
+			continue;
+		}
+
+		FFactoryConveyorSegment* TargetSegment = ConveyorsByCellCoord.Find(SourceSegment->NextCoord);
+		if (!TargetSegment || TargetSegment->CurrentResourceType != EFactoryResourceType::None)
+		{
+			continue;
+		}
+
+		TargetSegment->CurrentResourceType = MovePair.Value;
+		TargetSegment->CurrentItemId = SourceSegment->CurrentItemId;
+		TargetSegment->ResourceVisualInstanceIndex = SourceSegment->ResourceVisualInstanceIndex;
+		TargetSegment->ResourceVisualFromCoord = SourceSegment->Coord;
+		TargetSegment->ResourceVisualToCoord = TargetSegment->Coord;
+		TargetSegment->ResourceVisualMoveElapsed = 0.0f;
+		SourceSegment->CurrentResourceType = EFactoryResourceType::None;
+		SourceSegment->CurrentItemId = INDEX_NONE;
+		SourceSegment->ResourceVisualInstanceIndex = INDEX_NONE;
+		SourceSegment->ResourceVisualFromCoord = FGridCoord();
+		SourceSegment->ResourceVisualToCoord = FGridCoord();
+		SourceSegment->ResourceVisualMoveElapsed = 0.0f;
+	}
+}
+
+bool AFactoryManager::TryPushResourceToConveyor(
+	const FGridCoord& SourceCoord,
+	const FGridCoord& ConveyorCoord,
+	EFactoryResourceType ResourceType
+)
+{
+	if (ResourceType == EFactoryResourceType::None)
+	{
+		return false;
+	}
+
+	FFactoryConveyorSegment* ConveyorSegment = ConveyorsByCellCoord.Find(ConveyorCoord);
+	if (!ConveyorSegment || ConveyorSegment->CurrentResourceType != EFactoryResourceType::None)
+	{
+		return false;
+	}
+
+	if (!HasCompatibleInputPort(*ConveyorSegment, SourceCoord, ResourceType))
+	{
+		return false;
+	}
+
+	ConveyorSegment->CurrentResourceType = ResourceType;
+	ConveyorSegment->CurrentItemId = 0;
+	ConveyorSegment->ResourceVisualInstanceIndex = AddResourceVisual(ResourceType, SourceCoord, ConveyorCoord);
+	ConveyorSegment->ResourceVisualFromCoord = SourceCoord;
+	ConveyorSegment->ResourceVisualToCoord = ConveyorCoord;
+	ConveyorSegment->ResourceVisualMoveElapsed = 0.0f;
+	return true;
+}
+
+void AFactoryManager::UpdateResourceVisuals(float DeltaTime)
+{
+	const float MoveDuration = FMath::Max(SimulationStepInterval, KINDA_SMALL_NUMBER);
+
+	for (TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
+	{
+		FFactoryConveyorSegment& ConveyorSegment = ConveyorPair.Value;
+		if (ConveyorSegment.CurrentResourceType == EFactoryResourceType::None || ConveyorSegment.ResourceVisualInstanceIndex == INDEX_NONE)
+		{
+			continue;
+		}
+
+		ConveyorSegment.ResourceVisualMoveElapsed = FMath::Min(
+			ConveyorSegment.ResourceVisualMoveElapsed + DeltaTime,
+			MoveDuration
+		);
+
+		const float Alpha = ConveyorSegment.ResourceVisualMoveElapsed / MoveDuration;
+		const FVector FromLocation = GridCellCenterToWorld(ConveyorSegment.ResourceVisualFromCoord);
+		const FVector ToLocation = GridCellCenterToWorld(ConveyorSegment.ResourceVisualToCoord);
+		SetResourceVisualTransform(
+			ConveyorSegment.CurrentResourceType,
+			ConveyorSegment.ResourceVisualInstanceIndex,
+			FMath::Lerp(FromLocation, ToLocation, Alpha)
+		);
+	}
 }
 
 void AFactoryManager::CreateInitialChunks()
@@ -625,6 +847,7 @@ bool AFactoryManager::TryPlaceConveyor(
 	Cell->BuildingId = INDEX_NONE;
 	Cell->ConveyorCoord = OriginCoord;
 
+	RefreshConveyorConnectionsAroundCoord(OriginCoord);
 	UpdateDeveloperModeCoordDisplay(OriginCoord);
 
 	return true;
@@ -748,7 +971,233 @@ float AFactoryManager::DirectionToYaw(EFactoryDirection Direction) const
 		return 270.0f;
 	case EFactoryDirection::None:
 	default:
-		return 0.0f;
+	return 0.0f;
+	}
+}
+
+void AFactoryManager::RefreshConveyorConnectionAtCoord(const FGridCoord& Coord)
+{
+	FFactoryConveyorSegment* ConveyorSegment = ConveyorsByCellCoord.Find(Coord);
+	if (!ConveyorSegment)
+	{
+		return;
+	}
+
+	FGridCoord TargetCoord;
+	ConveyorSegment->bHasNextCoord = TryFindConveyorOutputTarget(*ConveyorSegment, TargetCoord);
+	ConveyorSegment->NextCoord = ConveyorSegment->bHasNextCoord ? TargetCoord : FGridCoord();
+}
+
+void AFactoryManager::RefreshConveyorConnectionsAroundCoord(const FGridCoord& Coord)
+{
+	RefreshConveyorConnectionAtCoord(Coord);
+
+	for (const FGridCoord& NeighborCoord : GetNeighbors(Coord))
+	{
+		RefreshConveyorConnectionAtCoord(NeighborCoord);
+	}
+}
+
+bool AFactoryManager::TryFindConveyorOutputTarget(const FFactoryConveyorSegment& ConveyorSegment, FGridCoord& OutTargetCoord) const
+{
+	for (const FFactoryPlacedBuildingPort& Port : ConveyorSegment.WorldPorts)
+	{
+		if (Port.PortType != EFactoryPortType::Output || Port.Direction == EFactoryDirection::None)
+		{
+			continue;
+		}
+
+		const FGridCoord DirectionOffset = DirectionToGridOffset(Port.Direction);
+		const FGridCoord TargetCoord(Port.WorldCoord.X + DirectionOffset.X, Port.WorldCoord.Y + DirectionOffset.Y);
+		const FFactoryConveyorSegment* TargetConveyor = ConveyorsByCellCoord.Find(TargetCoord);
+		if (TargetConveyor && HasCompatibleInputPort(*TargetConveyor, ConveyorSegment.Coord, ConveyorSegment.CurrentResourceType))
+		{
+			OutTargetCoord = TargetCoord;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AFactoryManager::HasCompatibleInputPort(
+	const FFactoryConveyorSegment& ConveyorSegment,
+	const FGridCoord& SourceCoord,
+	EFactoryResourceType ResourceType
+) const
+{
+	for (const FFactoryPlacedBuildingPort& Port : ConveyorSegment.WorldPorts)
+	{
+		if (Port.PortType != EFactoryPortType::Input || Port.Direction == EFactoryDirection::None)
+		{
+			continue;
+		}
+
+		if (!DoesPortAcceptResource(Port, ResourceType))
+		{
+			continue;
+		}
+
+		const FGridCoord DirectionOffset = DirectionToGridOffset(Port.Direction);
+		const FGridCoord ExpectedSourceCoord(Port.WorldCoord.X + DirectionOffset.X, Port.WorldCoord.Y + DirectionOffset.Y);
+		if (ExpectedSourceCoord == SourceCoord)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AFactoryManager::DoesPortAcceptResource(const FFactoryPlacedBuildingPort& Port, EFactoryResourceType ResourceType) const
+{
+	if (Port.AcceptedItemId.IsNone() || ResourceType == EFactoryResourceType::None)
+	{
+		return true;
+	}
+
+	const UEnum* ResourceEnum = StaticEnum<EFactoryResourceType>();
+	if (!ResourceEnum)
+	{
+		return false;
+	}
+
+	return Port.AcceptedItemId == FName(ResourceEnum->GetNameStringByValue(static_cast<int64>(ResourceType)));
+}
+
+UHierarchicalInstancedStaticMeshComponent* AFactoryManager::GetOrCreateResourceVisualComponent(EFactoryResourceType ResourceType)
+{
+	if (ResourceType == EFactoryResourceType::None || !ResourceVisualData)
+	{
+		return nullptr;
+	}
+
+	if (UHierarchicalInstancedStaticMeshComponent** ExistingComponent = ResourceVisualComponentsByType.Find(ResourceType))
+	{
+		return *ExistingComponent;
+	}
+
+	TObjectPtr<UStaticMesh>* ResourceMesh = ResourceVisualData->ResourceMeshesByType.Find(ResourceType);
+	if (!ResourceMesh || !*ResourceMesh)
+	{
+		return nullptr;
+	}
+
+	const UEnum* ResourceEnum = StaticEnum<EFactoryResourceType>();
+	const FString ResourceName = ResourceEnum
+		? ResourceEnum->GetNameStringByValue(static_cast<int64>(ResourceType))
+		: TEXT("Resource");
+
+	const FName ComponentName = MakeUniqueObjectName(
+		this,
+		UHierarchicalInstancedStaticMeshComponent::StaticClass(),
+		*FString::Printf(TEXT("ResourceVisual_%s"), *ResourceName)
+	);
+
+	UHierarchicalInstancedStaticMeshComponent* ResourceVisualComponent = NewObject<UHierarchicalInstancedStaticMeshComponent>(this, ComponentName);
+	if (!ResourceVisualComponent)
+	{
+		return nullptr;
+	}
+
+	ResourceVisualComponent->SetupAttachment(TransformComponent);
+	ResourceVisualComponent->SetStaticMesh(*ResourceMesh);
+	ResourceVisualComponent->RegisterComponent();
+	AddInstanceComponent(ResourceVisualComponent);
+
+	ResourceVisualComponentsByType.Add(ResourceType, ResourceVisualComponent);
+	return ResourceVisualComponent;
+}
+
+int32 AFactoryManager::AddResourceVisual(EFactoryResourceType ResourceType, const FGridCoord& FromCoord, const FGridCoord& ToCoord)
+{
+	UHierarchicalInstancedStaticMeshComponent* ResourceVisualComponent = GetOrCreateResourceVisualComponent(ResourceType);
+	if (!ResourceVisualComponent)
+	{
+		return INDEX_NONE;
+	}
+
+	const int32 InstanceIndex = ResourceVisualComponent->AddInstance(
+		FTransform(FRotator::ZeroRotator, GridCellCenterToWorld(FromCoord), FVector::OneVector),
+		true
+	);
+
+	return InstanceIndex;
+}
+
+void AFactoryManager::RemoveResourceVisual(EFactoryResourceType ResourceType, int32 InstanceIndex)
+{
+	if (ResourceType == EFactoryResourceType::None || InstanceIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	if (UHierarchicalInstancedStaticMeshComponent** ResourceVisualComponent = ResourceVisualComponentsByType.Find(ResourceType))
+	{
+		if (*ResourceVisualComponent)
+		{
+			(*ResourceVisualComponent)->RemoveInstance(InstanceIndex);
+			RepairResourceVisualInstanceIndices(ResourceType);
+		}
+	}
+}
+
+void AFactoryManager::RepairResourceVisualInstanceIndices(EFactoryResourceType ResourceType)
+{
+	UHierarchicalInstancedStaticMeshComponent** ResourceVisualComponent = ResourceVisualComponentsByType.Find(ResourceType);
+	if (!ResourceVisualComponent || !*ResourceVisualComponent)
+	{
+		return;
+	}
+
+	for (TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
+	{
+		FFactoryConveyorSegment& ConveyorSegment = ConveyorPair.Value;
+		if (ConveyorSegment.CurrentResourceType != ResourceType || ConveyorSegment.ResourceVisualInstanceIndex == INDEX_NONE)
+		{
+			continue;
+		}
+
+		const FVector ExpectedLocation = GridCellCenterToWorld(ConveyorSegment.ResourceVisualToCoord);
+		ConveyorSegment.ResourceVisualInstanceIndex = INDEX_NONE;
+
+		const int32 InstanceCount = (*ResourceVisualComponent)->GetInstanceCount();
+		for (int32 InstanceIndex = 0; InstanceIndex < InstanceCount; ++InstanceIndex)
+		{
+			FTransform InstanceTransform;
+			if (!(*ResourceVisualComponent)->GetInstanceTransform(InstanceIndex, InstanceTransform, true))
+			{
+				continue;
+			}
+
+			if (InstanceTransform.GetLocation().Equals(ExpectedLocation, 1.0f))
+			{
+				ConveyorSegment.ResourceVisualInstanceIndex = InstanceIndex;
+				break;
+			}
+		}
+	}
+}
+
+void AFactoryManager::SetResourceVisualTransform(EFactoryResourceType ResourceType, int32 InstanceIndex, const FVector& Location)
+{
+	if (ResourceType == EFactoryResourceType::None || InstanceIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	if (UHierarchicalInstancedStaticMeshComponent** ResourceVisualComponent = ResourceVisualComponentsByType.Find(ResourceType))
+	{
+		if (*ResourceVisualComponent)
+		{
+			(*ResourceVisualComponent)->UpdateInstanceTransform(
+				InstanceIndex,
+				FTransform(FRotator::ZeroRotator, Location, FVector::OneVector),
+				true,
+				true,
+				true
+			);
+		}
 	}
 }
 
@@ -846,18 +1295,53 @@ void AFactoryManager::UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoor
 		return;
 	}
 
-	DeveloperModeWidget->SetCurrentCellCoord(CellCoord, EFactoryCoordType::Cell);
-	DeveloperModeWidget->SetCurrentCellCoord(WorldCoordToChunkCoord(CellCoord), EFactoryCoordType::Chunk);
+	const EFactoryResourceType HoveredResourceType = FindResourceAtCoord(CellCoord);
+	DeveloperModeWidget->SetCurrentCellCoord(CellCoord, EFactoryCoordType::Cell, HoveredResourceType);
+	DeveloperModeWidget->SetCurrentCellCoord(WorldCoordToChunkCoord(CellCoord), EFactoryCoordType::Chunk, HoveredResourceType);
 
 	const FFactoryGridCell* Cell = GetCell(CellCoord);
 	if (Cell && Cell->IsOccupied())
 	{
-		DeveloperModeWidget->UpdateBuildingOnCell(*Cell);
+		FName BuildingTypeId = NAME_None;
+		if (Cell->Occupancy == EFactoryCellOccupancy::Conveyor)
+		{
+			const FFactoryConveyorSegment* ConveyorSegment = ConveyorsByCellCoord.Find(Cell->ConveyorCoord);
+			if (ConveyorSegment && ConveyorSegment->ConveyorData)
+			{
+				BuildingTypeId = ConveyorSegment->ConveyorData->BuildingTypeId;
+			}
+		}
+		else if (Cell->Occupancy == EFactoryCellOccupancy::Building)
+		{
+			const FFactoryPlacedBuildingInstance* BuildingInstance = BuildingInstancesByCellCoord.Find(CellCoord);
+			if (BuildingInstance && BuildingInstance->BuildingData)
+			{
+				BuildingTypeId = BuildingInstance->BuildingData->BuildingTypeId;
+			}
+		}
+
+		DeveloperModeWidget->UpdateBuildingOnCell(*Cell, BuildingTypeId);
 	}
 	else
 	{
 		DeveloperModeWidget->ClearBuildingOnCell();
 	}
+}
+
+void AFactoryManager::UpdateDeveloperModeSelectedBuildableDisplay()
+{
+	if (!DeveloperModeWidget)
+	{
+		return;
+	}
+
+	if (!SelectedBuilding)
+	{
+		DeveloperModeWidget->ClearSelectedBuildable();
+		return;
+	}
+
+	DeveloperModeWidget->UpdateSelectedBuildable(SelectedBuilding, SelectedBuilding->BuildingTypeId, CurrentBuildDirection);
 }
 
 // MARK: Debug drawing
@@ -888,6 +1372,8 @@ void AFactoryManager::DrawDebugGrid() const
 	{
 		DrawDebugCellBounds(HoveredCellCoord, DebugHoveredCellColor, DebugHoveredCellLineThickness);
 	}
+
+	DrawDebugConveyorState();
 }
 
 void AFactoryManager::DrawDebugCellGridForChunk(const FGridCoord& ChunkCoord) const
@@ -962,6 +1448,38 @@ void AFactoryManager::DrawDebugCellBounds(
 	DrawDebugLine(GetWorld(), BottomRight, TopRight, Color, false, 0.0f, 0, Thickness);
 	DrawDebugLine(GetWorld(), TopRight, TopLeft, Color, false, 0.0f, 0, Thickness);
 	DrawDebugLine(GetWorld(), TopLeft, BottomLeft, Color, false, 0.0f, 0, Thickness);
+}
+
+void AFactoryManager::DrawDebugConveyorState() const
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	const UEnum* ResourceEnum = StaticEnum<EFactoryResourceType>();
+	for (const TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
+	{
+		const FFactoryConveyorSegment& ConveyorSegment = ConveyorPair.Value;
+		if (ConveyorSegment.CurrentResourceType == EFactoryResourceType::None)
+		{
+			continue;
+		}
+
+		const FString ResourceName = ResourceEnum
+			? ResourceEnum->GetNameStringByValue(static_cast<int64>(ConveyorSegment.CurrentResourceType))
+			: TEXT("Resource");
+
+		DrawDebugString(
+			GetWorld(),
+			GridCellCenterToWorld(ConveyorSegment.Coord) + FVector(0.0f, 0.0f, 80.0f),
+			ResourceName,
+			nullptr,
+			DebugConveyorItemColor,
+			0.0f,
+			true
+		);
+	}
 }
 
 // MARK: Grid helpers
