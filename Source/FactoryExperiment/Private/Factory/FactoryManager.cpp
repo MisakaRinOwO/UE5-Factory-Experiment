@@ -37,6 +37,7 @@ void AFactoryManager::BeginPlay()
 	Super::BeginPlay();
 
 	CreateInitialChunks();
+	CreateResourceVeinVisuals();
 
 	if (SimulationStepInterval > 0.0f)
 	{
@@ -891,6 +892,7 @@ UHierarchicalInstancedStaticMeshComponent* AFactoryManager::GetOrCreateConveyorV
 
 	ConveyorVisualComponent->SetupAttachment(TransformComponent);
 	ConveyorVisualComponent->SetStaticMesh(ConveyorData->ConveyorMesh);
+	ConfigureInstancedVisualComponent(ConveyorVisualComponent);
 	ConveyorVisualComponent->RegisterComponent();
 	AddInstanceComponent(ConveyorVisualComponent);
 
@@ -1102,6 +1104,7 @@ UHierarchicalInstancedStaticMeshComponent* AFactoryManager::GetOrCreateResourceV
 
 	ResourceVisualComponent->SetupAttachment(TransformComponent);
 	ResourceVisualComponent->SetStaticMesh(*ResourceMesh);
+	ConfigureInstancedVisualComponent(ResourceVisualComponent);
 	ResourceVisualComponent->RegisterComponent();
 	AddInstanceComponent(ResourceVisualComponent);
 
@@ -1132,51 +1135,7 @@ void AFactoryManager::RemoveResourceVisual(EFactoryResourceType ResourceType, in
 		return;
 	}
 
-	if (UHierarchicalInstancedStaticMeshComponent** ResourceVisualComponent = ResourceVisualComponentsByType.Find(ResourceType))
-	{
-		if (*ResourceVisualComponent)
-		{
-			(*ResourceVisualComponent)->RemoveInstance(InstanceIndex);
-			RepairResourceVisualInstanceIndices(ResourceType);
-		}
-	}
-}
-
-void AFactoryManager::RepairResourceVisualInstanceIndices(EFactoryResourceType ResourceType)
-{
-	UHierarchicalInstancedStaticMeshComponent** ResourceVisualComponent = ResourceVisualComponentsByType.Find(ResourceType);
-	if (!ResourceVisualComponent || !*ResourceVisualComponent)
-	{
-		return;
-	}
-
-	for (TPair<FGridCoord, FFactoryConveyorSegment>& ConveyorPair : ConveyorsByCellCoord)
-	{
-		FFactoryConveyorSegment& ConveyorSegment = ConveyorPair.Value;
-		if (ConveyorSegment.CurrentResourceType != ResourceType || ConveyorSegment.ResourceVisualInstanceIndex == INDEX_NONE)
-		{
-			continue;
-		}
-
-		const FVector ExpectedLocation = GridCellCenterToWorld(ConveyorSegment.ResourceVisualToCoord);
-		ConveyorSegment.ResourceVisualInstanceIndex = INDEX_NONE;
-
-		const int32 InstanceCount = (*ResourceVisualComponent)->GetInstanceCount();
-		for (int32 InstanceIndex = 0; InstanceIndex < InstanceCount; ++InstanceIndex)
-		{
-			FTransform InstanceTransform;
-			if (!(*ResourceVisualComponent)->GetInstanceTransform(InstanceIndex, InstanceTransform, true))
-			{
-				continue;
-			}
-
-			if (InstanceTransform.GetLocation().Equals(ExpectedLocation, 1.0f))
-			{
-				ConveyorSegment.ResourceVisualInstanceIndex = InstanceIndex;
-				break;
-			}
-		}
-	}
+	HideResourceVisual(ResourceType, InstanceIndex);
 }
 
 void AFactoryManager::SetResourceVisualTransform(EFactoryResourceType ResourceType, int32 InstanceIndex, const FVector& Location)
@@ -1199,6 +1158,115 @@ void AFactoryManager::SetResourceVisualTransform(EFactoryResourceType ResourceTy
 			);
 		}
 	}
+}
+
+void AFactoryManager::HideResourceVisual(EFactoryResourceType ResourceType, int32 InstanceIndex)
+{
+	if (ResourceType == EFactoryResourceType::None || InstanceIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	if (UHierarchicalInstancedStaticMeshComponent** ResourceVisualComponent = ResourceVisualComponentsByType.Find(ResourceType))
+	{
+		if (*ResourceVisualComponent)
+		{
+			(*ResourceVisualComponent)->UpdateInstanceTransform(
+				InstanceIndex,
+				FTransform(FRotator::ZeroRotator, FVector(0.0f, 0.0f, -100000.0f), FVector::ZeroVector),
+				true,
+				true,
+				true
+			);
+		}
+	}
+}
+
+void AFactoryManager::CreateResourceVeinVisuals()
+{
+	if (!ResourceMapData || !ResourceVisualData)
+	{
+		return;
+	}
+
+	for (const TPair<EFactoryResourceType, FFactoryResourceCoordList>& ResourcePair : ResourceMapData->ResourceCoordsByType)
+	{
+		if (ResourcePair.Key == EFactoryResourceType::None)
+		{
+			continue;
+		}
+
+		UHierarchicalInstancedStaticMeshComponent* VeinVisualComponent = GetOrCreateResourceVeinVisualComponent(ResourcePair.Key);
+		if (!VeinVisualComponent)
+		{
+			continue;
+		}
+
+		for (const FGridCoord& Coord : ResourcePair.Value.Coords)
+		{
+			VeinVisualComponent->AddInstance(
+				FTransform(FRotator::ZeroRotator, GridCellCenterToWorld(Coord), FVector::OneVector),
+				true
+			);
+		}
+	}
+}
+
+UHierarchicalInstancedStaticMeshComponent* AFactoryManager::GetOrCreateResourceVeinVisualComponent(EFactoryResourceType ResourceType)
+{
+	if (ResourceType == EFactoryResourceType::None || !ResourceVisualData)
+	{
+		return nullptr;
+	}
+
+	if (UHierarchicalInstancedStaticMeshComponent** ExistingComponent = ResourceVeinVisualComponentsByType.Find(ResourceType))
+	{
+		return *ExistingComponent;
+	}
+
+	TObjectPtr<UStaticMesh>* VeinMesh = ResourceVisualData->ResourceVeinMeshesByType.Find(ResourceType);
+	if (!VeinMesh || !*VeinMesh)
+	{
+		return nullptr;
+	}
+
+	const UEnum* ResourceEnum = StaticEnum<EFactoryResourceType>();
+	const FString ResourceName = ResourceEnum
+		? ResourceEnum->GetNameStringByValue(static_cast<int64>(ResourceType))
+		: TEXT("Resource");
+
+	const FName ComponentName = MakeUniqueObjectName(
+		this,
+		UHierarchicalInstancedStaticMeshComponent::StaticClass(),
+		*FString::Printf(TEXT("ResourceVein_%s"), *ResourceName)
+	);
+
+	UHierarchicalInstancedStaticMeshComponent* VeinVisualComponent = NewObject<UHierarchicalInstancedStaticMeshComponent>(this, ComponentName);
+	if (!VeinVisualComponent)
+	{
+		return nullptr;
+	}
+
+	VeinVisualComponent->SetupAttachment(TransformComponent);
+	VeinVisualComponent->SetStaticMesh(*VeinMesh);
+	ConfigureInstancedVisualComponent(VeinVisualComponent);
+	VeinVisualComponent->RegisterComponent();
+	AddInstanceComponent(VeinVisualComponent);
+
+	ResourceVeinVisualComponentsByType.Add(ResourceType, VeinVisualComponent);
+	return VeinVisualComponent;
+}
+
+void AFactoryManager::ConfigureInstancedVisualComponent(UHierarchicalInstancedStaticMeshComponent* VisualComponent) const
+{
+	if (!VisualComponent)
+	{
+		return;
+	}
+
+	VisualComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	VisualComponent->SetCanEverAffectNavigation(false);
+	VisualComponent->SetMobility(EComponentMobility::Movable);
 }
 
 // MARK: Hover and UI updates

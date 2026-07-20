@@ -15,4 +15,7 @@ class FACTORYEXPERIMENT_API UFactoryResourceVisualDataAsset : public UDataAsset
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Resources")
 	TMap<EFactoryResourceType, TObjectPtr<UStaticMesh>> ResourceMeshesByType;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Resources")
+	TMap<EFactoryResourceType, TObjectPtr<UStaticMesh>> ResourceVeinMeshesByType;
 };

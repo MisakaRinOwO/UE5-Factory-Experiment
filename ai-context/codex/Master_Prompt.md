@@ -1,6 +1,6 @@
 # FactoryExperiment Codex Master Prompt
 
-Last updated: 2026-07-15
+Last updated: 2026-07-20
 
 ## Project Summary
 
@@ -32,7 +32,7 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Port data: buildable DA ports are converted into runtime world ports and should be reused for conveyor/building connection rules.
 - Simulation: centralized timer in `AFactoryManager`, intended interval `0.2s`.
 - Debug: developer UI plus debug draw should make cell/chunk/building/conveyor state visible.
-- Resource visuals: `UFactoryResourceVisualDataAsset` maps resource types to meshes; simulation remains data-first.
+- Resource visuals: `UFactoryResourceVisualDataAsset` maps resource types to moving resource meshes and static resource vein meshes; simulation remains data-first.
 
 ## Current Progress Snapshot
 
@@ -55,6 +55,8 @@ Implemented or present in the repository:
 - Miner output uses round-robin across connected, unblocked output conveyors.
 - Conveyor item/resource movement works on the fixed-step simulation timer.
 - Resource mesh visuals interpolate every frame between fixed-step conveyor cells.
+- Resource vein visuals are generated from `ResourceMapData` coords using `ResourceVisualData.ResourceVeinMeshesByType`.
+- Removing a conveyor carrying ore no longer breaks moving ore HISM visuals; resource visuals are hidden instead of removed so HISM instance index compaction does not invalidate other segments.
 - Developer UI reports hovered resource, hovered building type id, selected buildable, and build direction.
 - Number keys select conveyor/miner, and `R` rotates the build direction clockwise.
 
@@ -63,7 +65,7 @@ Current incomplete areas:
 - Assembler and storage logic are not implemented yet.
 - Recipe processing and output buffering are not implemented yet.
 - Conveyor movement is data-correct for MVP but does not yet use conveyor speed as a throughput/progress parameter.
-- Resource visual instance repair is simple scan-based MVP logic.
+- Moving resource visual removal is MVP-safe but not memory-reusing yet; hidden instances may accumulate until a future pooling/free-list pass. Keep this implementation for now because it preserves correctness and avoids extra lifecycle complexity before assembler/storage/recipe flow is complete.
 - Building footprint lookup should likely move toward a coord-keyed lookup for robust hover/delete.
 
 ## Agent Operating Rules

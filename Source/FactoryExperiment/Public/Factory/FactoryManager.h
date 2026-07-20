@@ -96,6 +96,8 @@ private:
 
 	TMap<EFactoryResourceType, UHierarchicalInstancedStaticMeshComponent*> ResourceVisualComponentsByType;
 
+	TMap<EFactoryResourceType, UHierarchicalInstancedStaticMeshComponent*> ResourceVeinVisualComponentsByType;
+
 	FTimerHandle SimulationTimerHandle;
 
 public:
@@ -218,8 +220,11 @@ private:
 	UHierarchicalInstancedStaticMeshComponent* GetOrCreateResourceVisualComponent(EFactoryResourceType ResourceType);
 	int32 AddResourceVisual(EFactoryResourceType ResourceType, const FGridCoord& FromCoord, const FGridCoord& ToCoord);
 	void RemoveResourceVisual(EFactoryResourceType ResourceType, int32 InstanceIndex);
-	void RepairResourceVisualInstanceIndices(EFactoryResourceType ResourceType);
 	void SetResourceVisualTransform(EFactoryResourceType ResourceType, int32 InstanceIndex, const FVector& Location);
+	void HideResourceVisual(EFactoryResourceType ResourceType, int32 InstanceIndex);
+	void CreateResourceVeinVisuals();
+	UHierarchicalInstancedStaticMeshComponent* GetOrCreateResourceVeinVisualComponent(EFactoryResourceType ResourceType);
+	void ConfigureInstancedVisualComponent(UHierarchicalInstancedStaticMeshComponent* VisualComponent) const;
 
 	// Hover and UI
 	void UpdateHoveredCellFromMouseRaycast();

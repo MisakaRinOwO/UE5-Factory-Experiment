@@ -1,6 +1,6 @@
 # FactoryExperiment Open Questions
 
-Last updated: 2026-07-15
+Last updated: 2026-07-20
 
 This file tracks unclear requirements or design choices that should be confirmed with the user before changing core direction.
 
@@ -71,6 +71,29 @@ Future options:
 
 - Add true item packets if multiple items per belt, variable spacing, or richer visual interpolation is needed.
 - Add conveyor speed/progress once the full production chain is complete.
+
+## Resolved: Ore Visual Movement and Conveyor Removal
+
+Decision: Keep ore movement data on conveyor segments and keep moving ore visuals as HISM presentation only.
+
+Current behavior:
+
+- Ore/resource data moves on the fixed `AFactoryManager` simulation timer.
+- Moving ore visuals interpolate every tick between the segment's previous and current coords.
+- Static ore vein visuals are generated from `ResourceMapData` using `ResourceVisualData.ResourceVeinMeshesByType`.
+- Removing a conveyor carrying ore hides the moving ore HISM instance instead of removing it.
+
+Reason:
+
+- HISM `RemoveInstance` can compact/reorder instance indices.
+- Moving ore segments store a visual instance index only as a visual handle.
+- Hiding the instance avoids invalidating other moving ore visual handles during the MVP.
+
+Future option:
+
+- Keep the current hide-instead-of-remove implementation for now.
+- Add moving-resource visual pooling/free-list or full HISM rebuild only if hidden instances become a measurable issue.
+- This is intentionally deferred because the current implementation fixes the correctness bug and keeps the MVP simpler while assembler/storage/recipe work is still pending.
 
 ## Resolved: Miner Extraction and Output
 

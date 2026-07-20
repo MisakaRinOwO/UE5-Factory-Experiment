@@ -39,6 +39,8 @@ Implemented / added so far:
 - Fixed-step conveyor item/resource movement.
 - Resource visual data asset for resource mesh feedback.
 - Smooth per-frame resource visual interpolation over fixed-step simulation movement.
+- Static ore vein mesh generation from resource map coordinates.
+- Stable moving ore visuals when deleting conveyors carrying resources.
 
 Immediate next step:
 
@@ -181,6 +183,8 @@ Current resource movement:
 - Miner output is updated by the centralized simulation timer.
 - Conveyor data advances at the fixed simulation step.
 - Resource mesh visuals interpolate per frame between conveyor cells.
+- Static ore vein meshes are generated from resource map coordinates at BeginPlay.
+- Moving resource visuals are visual-only HISM instances; deletion hides the instance instead of using it as gameplay identity. This keeps the MVP stable, with pooling/free-list cleanup left as a future optimization if hidden instances become measurable.
 
 ## Input and Control
 
@@ -279,8 +283,10 @@ Current developer UI also reports:
 7. Add centralized 0.2s simulation timer. Done.
 8. Implement miner extraction and conveyor item transfer. Done.
 9. Add smooth resource visual feedback. Done.
-10. Implement assembler/storage recipe processing.
-11. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
+10. Add static ore vein visuals from resource map data. Done.
+11. Stabilize moving ore visuals when deleting conveyors. Done.
+12. Implement assembler/storage recipe processing.
+13. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
 
 ## Portfolio Focus
 

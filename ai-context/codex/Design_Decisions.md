@@ -1,6 +1,6 @@
 # FactoryExperiment Design Decisions
 
-Last updated: 2026-07-15
+Last updated: 2026-07-20
 
 This file records the reasoning behind the current implementation direction. It is based on the existing project memory and current repository state.
 
@@ -220,11 +220,99 @@ Item movement MVP decision:
 Resource visual follow-up:
 
 - Smooth movement visual should be layered on top of the fixed-step data simulation.
-- `UFactoryResourceVisualDataAsset` maps `EFactoryResourceType` to resource meshes.
-- `AFactoryManager` creates/caches one HISM component per resource type.
+- `UFactoryResourceVisualDataAsset` maps `EFactoryResourceType` to moving resource meshes.
+- `UFactoryResourceVisualDataAsset` also maps `EFactoryResourceType` to static resource vein meshes.
+- `AFactoryManager` creates/caches one HISM component per resource type for moving resources.
+- `AFactoryManager` creates/caches one HISM component per resource type for static resource veins.
 - Conveyor segments keep the resource visual instance index plus visual from/to coords and elapsed time.
 - Data still moves on the `0.2s` simulation step; visuals interpolate every tick from previous coord to current coord.
 - If `ResourceVisualData` or a resource mesh is missing, the data simulation should still work and debug strings remain useful.
+
+## Ore Data and Visual Movement
+
+Decision: Ore movement is data-first, with HISM visuals as a readable presentation layer.
+
+Current data path:
+
+```text
+ResourceMapData coords
+  -> 1x1 Miner detects covered resource type
+  -> Miner round-robin chooses a connected, unblocked output port
+  -> TryPushResourceToConveyor writes CurrentResourceType onto the target conveyor segment
+  -> UpdateConveyors moves CurrentResourceType one conveyor segment per 0.2s simulation step
+```
+
+Current visual path:
+
+```text
+ResourceVisualData.ResourceMeshesByType
+  -> one moving-resource HISM component per resource type
+  -> conveyor segment stores ResourceVisualInstanceIndex
+  -> segment stores ResourceVisualFromCoord / ResourceVisualToCoord / ResourceVisualMoveElapsed
+  -> Tick interpolates the HISM instance between fixed-step source and target coords
+```
+
+Static ore vein path:
+
+```text
+ResourceMapData.ResourceCoordsByType
+  -> ResourceVisualData.ResourceVeinMeshesByType
+  -> CreateResourceVeinVisuals at BeginPlay
+  -> one static vein HISM component per resource type
+```
+
+Original approach:
+
+- Data correctness came first: conveyor segments only stored `CurrentResourceType`.
+- Debug strings proved that ore moved correctly before polished visuals existed.
+- Smooth visuals were then layered over the fixed-step state by storing a HISM instance index on the segment that currently contains the resource.
+
+Issue encountered:
+
+- When a conveyor carrying ore was removed, resource/conveyor HISM visuals could disappear or appear misaligned.
+- The underlying risk is that HISM `RemoveInstance` can compact/reorder instance indices.
+- If a segment stores an instance index and another instance is removed or repaired incorrectly, the segment may continue updating the wrong visual instance.
+- This confirmed the earlier decision that HISM instance index must remain visual-only and should not be treated as gameplay identity.
+
+Fix:
+
+- Gameplay identity remains `FGridCoord` and `EFactoryResourceType`, not HISM instance index.
+- When removing a conveyor that contains a moving resource, `RemoveResourceVisual` now hides that moving-resource instance instead of calling `RemoveInstance`.
+- Hiding moves the instance far below the map and scales it to zero, avoiding HISM index compaction for moving resources.
+- Conveyor visual removal can still use `RemoveInstance` plus `RepairConveyorVisualInstanceIndices` because conveyor visuals are stationary and can be repaired by matching grid/world location.
+
+Tradeoff:
+
+- Hidden moving-resource instances may accumulate during heavy remove/place testing.
+- This is acceptable for MVP because it keeps behavior stable and easy to verify.
+- Future optimization can replace hiding with a free-list/pool, or rebuild moving-resource HISM instances from `ConveyorsByCellCoord` when needed.
+
+Decision for now:
+
+- Keep the current hide-instead-of-remove implementation.
+- Do not add moving-resource visual pooling yet.
+
+Reasoning:
+
+- The current priority is a stable, runnable production-chain MVP.
+- Hiding the instance avoids the immediate correctness bug caused by HISM instance index compaction.
+- The likely cost only appears after long play sessions or repeated deletion of conveyors that are actively carrying resources.
+- For short portfolio demos and current editor testing, the hidden-instance count should remain small enough to be acceptable.
+- Adding pooling/free-list now would improve long-session hygiene, but it adds lifecycle complexity before assembler/storage/recipe flow is complete.
+
+Potential performance issue:
+
+- A hidden moving-resource instance still exists in the HISM component.
+- Over time, frequent deletion of loaded conveyors can increase the internal instance count.
+- Even if the hidden instances are below the map and scaled to zero, they may still increase memory use and HISM buffer/update overhead.
+- This becomes worth optimizing if profiling shows large resource visual instance counts or delete/place stress tests start hitching.
+
+Future optimization options:
+
+- Add `TMap<EFactoryResourceType, TArray<int32>>` free lists for hidden moving-resource instance indices.
+- Make `AddResourceVisual` reuse a hidden instance before calling `AddInstance`.
+- Periodically rebuild moving-resource HISM instances from live `ConveyorsByCellCoord` data during a safe maintenance point.
+- Move toward explicit item packets only if conveyor density, spacing, or multi-item-per-belt behavior requires it.
 
 ## Coordinate-Based Pathfinding Interface
 
