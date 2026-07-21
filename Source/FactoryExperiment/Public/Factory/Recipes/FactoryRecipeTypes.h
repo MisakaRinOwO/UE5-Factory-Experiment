@@ -1,23 +1,26 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Factory/Items/FactoryItemTypes.h"
+#include "Factory/Resources/FactoryResourceMapDataAsset.h"
 #include "FactoryRecipeTypes.generated.h"
 
 USTRUCT(BlueprintType)
-struct FFactoryRecipe
+struct FFactoryResourceAmount
 {
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName RecipeId;
+	EFactoryResourceType ResourceType = EFactoryResourceType::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float CraftTime = 1.0f;
+	int32 Amount = 0;
+};
+
+USTRUCT(BlueprintType)
+struct FFactoryResourceAmountMap
+{
+	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TArray<FFactoryItemStack> Inputs;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TArray<FFactoryItemStack> Outputs;
+	TMap<EFactoryResourceType, int32> Resources;
 };

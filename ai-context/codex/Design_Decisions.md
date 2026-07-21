@@ -1,6 +1,6 @@
 # FactoryExperiment Design Decisions
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 This file records the reasoning behind the current implementation direction. It is based on the existing project memory and current repository state.
 
@@ -217,16 +217,17 @@ Item movement MVP decision:
 - Conveyor speed can exist as a DA parameter, but first implementation can treat speed as "attempt one transfer per simulation step" unless a simple accumulator is needed.
 - Use debug drawing or developer UI to display current item/resource state before adding smooth mesh/item movement.
 
-Resource visual follow-up:
+Resource data follow-up:
 
 - Smooth movement visual should be layered on top of the fixed-step data simulation.
-- `UFactoryResourceVisualDataAsset` maps `EFactoryResourceType` to moving resource meshes.
-- `UFactoryResourceVisualDataAsset` also maps `EFactoryResourceType` to static resource vein meshes.
+- `UFactoryResourceDataAsset` maps `EFactoryResourceType` to moving resource meshes.
+- `UFactoryResourceDataAsset` also maps `EFactoryResourceType` to static resource vein meshes.
+- `UFactoryResourceDataAsset` owns stack sizes per resource type.
 - `AFactoryManager` creates/caches one HISM component per resource type for moving resources.
 - `AFactoryManager` creates/caches one HISM component per resource type for static resource veins.
 - Conveyor segments keep the resource visual instance index plus visual from/to coords and elapsed time.
 - Data still moves on the `0.2s` simulation step; visuals interpolate every tick from previous coord to current coord.
-- If `ResourceVisualData` or a resource mesh is missing, the data simulation should still work and debug strings remain useful.
+- If `ResourceData` or a resource mesh is missing, the data simulation should still work and debug strings remain useful.
 
 ## Ore Data and Visual Movement
 
@@ -245,7 +246,7 @@ ResourceMapData coords
 Current visual path:
 
 ```text
-ResourceVisualData.ResourceMeshesByType
+ResourceData.ResourceMeshesByType
   -> one moving-resource HISM component per resource type
   -> conveyor segment stores ResourceVisualInstanceIndex
   -> segment stores ResourceVisualFromCoord / ResourceVisualToCoord / ResourceVisualMoveElapsed
@@ -256,7 +257,7 @@ Static ore vein path:
 
 ```text
 ResourceMapData.ResourceCoordsByType
-  -> ResourceVisualData.ResourceVeinMeshesByType
+  -> ResourceData.ResourceVeinMeshesByType
   -> CreateResourceVeinVisuals at BeginPlay
   -> one static vein HISM component per resource type
 ```
@@ -416,7 +417,62 @@ Current enum direction:
 Recipe direction:
 
 - Do not overload `UFactoryResourceMapDataAsset` with recipe concerns.
-- Production recipe DA work should be considered later when implementing the first production recipe.
+- Use one `UFactoryRecipeDataAsset` per recipe.
+- Buildings reference a recipe directly with `RecipeData`; `AFactoryManager` should not own a single global recipe database for the current MVP.
+- `RecipeId` is a unique identity for display, save/debug output, and future lookup. Do not give multiple recipes the same `RecipeId`; use shared output resources or display names when recipes produce the same item.
+- `DefaultRecipeId` string fallback was removed to avoid stale dual-source recipe configuration.
+
+## Recipe Data and Machine Storage
+
+Decision: recipe configuration is data-asset driven and machine storage is runtime data owned by `AFactoryManager`.
+
+Current recipe shape:
+
+```text
+UFactoryRecipeDataAsset
+  RecipeId
+  InputResources: TMap<EFactoryResourceType, int32>
+  OutputResources: TMap<EFactoryResourceType, int32>
+  CraftTime
+  AllowedBuildings
+```
+
+Reasoning:
+
+- One recipe per asset is easier to author and inspect in Blueprint than a large recipe database array.
+- Direct `RecipeData` references avoid string lookup bugs during MVP iteration.
+- `RecipeId` still matters as a stable unique label for UI, saves, debug, and future recipe-library lookup.
+- If recipe selection UI is needed later, add a separate `UFactoryRecipeLibraryDataAsset` that contains recipe DA references.
+
+Current machine storage shape:
+
+```text
+FFactoryMachineRuntimeData
+  InputStorageByPort
+  OutputStorageByPort
+  InternalStorage
+```
+
+Reasoning:
+
+- Port storage makes it possible to debug which side accepted a resource.
+- Shared `InternalStorage` is useful for extractor buffering, especially miner-alone cases.
+- Resource stack limits come from `UFactoryResourceDataAsset::StackSizeByResourceType`.
+
+Miner decision:
+
+- Miner is an extractor and does not use normal input storage.
+- Miner mines into shared `InternalStorage`.
+- Miner output flushes from `InternalStorage` to connected conveyors or adjacent machine input ports.
+- Miner extraction is configured as `ExtractionRatePerSecond`, for example `1.0 = one ore/sec`.
+- This prevents direct `Miner -> Smelter` from bypassing mining rate compared with `Miner -> Conveyor -> Smelter`.
+
+Future optimization/options:
+
+- Add processor-machine crafting: consume input storage, advance `CraftProgress`, write output storage/internal output buffer.
+- Add explicit inventory capacity per machine/port if stack-size-only capacity becomes too coarse.
+- Add recipe library/search only when UI recipe selection or save/load lookup needs it.
+- Add conveyor speed accumulators after the smelter loop is stable; current conveyors still advance one cell per `0.2s` simulation step.
 
 Miner/resource map direction:
 

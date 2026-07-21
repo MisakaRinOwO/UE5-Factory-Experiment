@@ -1,6 +1,6 @@
 # FactoryExperiment Codex Master Prompt
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 ## Project Summary
 
@@ -32,7 +32,8 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Port data: buildable DA ports are converted into runtime world ports and should be reused for conveyor/building connection rules.
 - Simulation: centralized timer in `AFactoryManager`, intended interval `0.2s`.
 - Debug: developer UI plus debug draw should make cell/chunk/building/conveyor state visible.
-- Resource visuals: `UFactoryResourceVisualDataAsset` maps resource types to moving resource meshes and static resource vein meshes; simulation remains data-first.
+- Resource data: `UFactoryResourceDataAsset` maps resource types to moving meshes, static vein meshes, and stack sizes; simulation remains data-first.
+- Recipe data: one `UFactoryRecipeDataAsset` represents one unique recipe. Buildings reference recipe DA directly through `RecipeData`; old global recipe database/string lookup paths should not be reintroduced.
 
 ## Current Progress Snapshot
 
@@ -55,15 +56,23 @@ Implemented or present in the repository:
 - Miner output uses round-robin across connected, unblocked output conveyors.
 - Conveyor item/resource movement works on the fixed-step simulation timer.
 - Resource mesh visuals interpolate every frame between fixed-step conveyor cells.
-- Resource vein visuals are generated from `ResourceMapData` coords using `ResourceVisualData.ResourceVeinMeshesByType`.
+- Resource vein visuals are generated from `ResourceMapData` coords using `ResourceData.ResourceVeinMeshesByType`.
 - Removing a conveyor carrying ore no longer breaks moving ore HISM visuals; resource visuals are hidden instead of removed so HISM instance index compaction does not invalidate other segments.
+- `DA_Smelter` / smelter assets have been added on the content side.
+- Recipe DA structure exists with input/output resource maps, craft time, and allowed buildings.
+- `AFactoryManager` no longer owns a global `RecipeDatabase`; machine/building DA direct `RecipeData` references are the source of truth.
+- `DefaultRecipeId` legacy fallback was removed from building/machine data.
+- Machine runtime data has per-port input/output storage plus shared internal storage.
+- Miner extraction uses `ExtractionRatePerSecond`, mines into shared internal storage, then flushes to conveyor or adjacent machine input storage.
+- Conveyor output can deliver resources into adjacent non-extractor machine input storage.
 - Developer UI reports hovered resource, hovered building type id, selected buildable, and build direction.
 - Number keys select conveyor/miner, and `R` rotates the build direction clockwise.
 
 Current incomplete areas:
 
-- Assembler and storage logic are not implemented yet.
-- Recipe processing and output buffering are not implemented yet.
+- Smelter recipe processing is not implemented yet.
+- Storage logic is not implemented yet.
+- Recipe output buffering from processor machines is not implemented yet.
 - Conveyor movement is data-correct for MVP but does not yet use conveyor speed as a throughput/progress parameter.
 - Moving resource visual removal is MVP-safe but not memory-reusing yet; hidden instances may accumulate until a future pooling/free-list pass. Keep this implementation for now because it preserves correctness and avoids extra lifecycle complexity before assembler/storage/recipe flow is complete.
 - Building footprint lookup should likely move toward a coord-keyed lookup for robust hover/delete.

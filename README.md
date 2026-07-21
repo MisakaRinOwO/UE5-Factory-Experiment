@@ -37,14 +37,18 @@ Implemented / added so far:
 - Miner extraction from resource map cells.
 - Round-robin miner output across unblocked connected output conveyors.
 - Fixed-step conveyor item/resource movement.
-- Resource visual data asset for resource mesh feedback.
+- Unified resource data asset for moving meshes, vein meshes, and stack sizes.
 - Smooth per-frame resource visual interpolation over fixed-step simulation movement.
 - Static ore vein mesh generation from resource map coordinates.
 - Stable moving ore visuals when deleting conveyors carrying resources.
+- One-recipe-per-asset recipe data with input/output resource maps, craft time, and allowed buildings.
+- Machine runtime internal storage and per-port storage.
+- Miner extraction rate using `ExtractionRatePerSecond`.
+- Conveyor delivery into adjacent machine input storage.
 
 Immediate next step:
 
-- Extend the first production chain beyond miner output by adding assembler/storage input, recipe processing, and output buffering.
+- Implement smelter recipe processing: `1 IronOre -> 3s -> 1 IronIngot`.
 
 ## Core Design Direction
 
@@ -105,7 +109,7 @@ Buildings use a C++ base actor and Blueprint children:
 ```text
 AFactoryBuilding
   BP_Building_Miner
-  BP_Building_Assembler
+  BP_Building_Smelter
   BP_Building_Storage
 ```
 
@@ -114,7 +118,7 @@ Initial building sizes:
 ```text
 Miner     = 1x1
 Conveyor  = 1x1
-Assembler = 2x2
+Smelter   = 2x2
 Storage   = 2x2
 ```
 
@@ -123,18 +127,33 @@ Storage   = 2x2
 The first functional chain is:
 
 ```text
-Miner -> Conveyor -> Assembler -> Storage
+Miner -> Conveyor -> Smelter -> Storage
 ```
 
-Machine inventory starts as simple input/output arrays. Per-port buffers can be added later after the full simulation loop works.
+Machine runtime storage currently includes shared internal storage plus per-port input/output storage.
 
 Current working slice:
 
 ```text
-Resource Map -> Miner -> Conveyor
+Resource Map -> Miner -> Conveyor -> Smelter input storage
 ```
 
-The miner is currently treated as a 1x1 extractor. Larger miners may later scale output by resource coverage ratio.
+The miner is currently treated as a 1x1 extractor. It mines into shared internal storage at `ExtractionRatePerSecond`, then flushes to conveyors or adjacent machine input ports. Larger miners may later scale output by resource coverage ratio.
+
+### Recipes
+
+Recipes use one data asset per recipe:
+
+```text
+UFactoryRecipeDataAsset
+  RecipeId
+  InputResources
+  OutputResources
+  CraftTime
+  AllowedBuildings
+```
+
+`RecipeId` is a unique recipe identity for display, save/debug output, and future lookup. Runtime production should use the `RecipeData` reference as the source of truth, not a global recipe database or string lookup.
 
 ### Conveyors
 
@@ -181,6 +200,7 @@ The system should avoid iterating every cell in every chunk during simulation.
 Current resource movement:
 
 - Miner output is updated by the centralized simulation timer.
+- Miner production is rate-limited by `ExtractionRatePerSecond`.
 - Conveyor data advances at the fixed simulation step.
 - Resource mesh visuals interpolate per frame between conveyor cells.
 - Static ore vein meshes are generated from resource map coordinates at BeginPlay.
@@ -285,8 +305,10 @@ Current developer UI also reports:
 9. Add smooth resource visual feedback. Done.
 10. Add static ore vein visuals from resource map data. Done.
 11. Stabilize moving ore visuals when deleting conveyors. Done.
-12. Implement assembler/storage recipe processing.
-13. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
+12. Add recipe data assets and machine internal storage. Done.
+13. Implement conveyor delivery into machine input storage. Done.
+14. Implement smelter recipe processing.
+15. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
 
 ## Portfolio Focus
 

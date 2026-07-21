@@ -1,14 +1,11 @@
 #include "Factory/Recipes/FactoryRecipeDataAsset.h"
 
-const FFactoryRecipe* UFactoryRecipeDataAsset::FindRecipeById(FName RecipeId) const
+bool UFactoryRecipeDataAsset::IsAllowedForBuilding(const UFactoryBuildingDataAsset* BuildingData) const
 {
-	for (const FFactoryRecipe& Recipe : Recipes)
+	if (!BuildingData)
 	{
-		if (Recipe.RecipeId == RecipeId)
-		{
-			return &Recipe;
-		}
+		return false;
 	}
 
-	return nullptr;
+	return AllowedBuildings.IsEmpty() || AllowedBuildings.Contains(BuildingData);
 }

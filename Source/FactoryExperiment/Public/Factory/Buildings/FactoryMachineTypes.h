@@ -2,10 +2,23 @@
 
 #include "CoreMinimal.h"
 #include "Factory/Buildings/FactoryBuildingTypes.h"
-#include "Factory/Items/FactoryItemTypes.h"
 #include "Factory/Resources/FactoryResourceMapDataAsset.h"
 #include "Grid/GridCoord.h"
 #include "FactoryMachineTypes.generated.h"
+
+class UFactoryRecipeDataAsset;
+
+USTRUCT(BlueprintType)
+struct FFactoryMachinePortStorage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FFactoryPlacedBuildingPort Port;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TMap<EFactoryResourceType, int32> StoredResources;
+};
 
 USTRUCT(BlueprintType)
 struct FFactoryMachineRuntimeData
@@ -25,6 +38,9 @@ struct FFactoryMachineRuntimeData
 	FName RecipeId;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<UFactoryRecipeDataAsset> RecipeData;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	float CraftProgress = 0.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
@@ -34,16 +50,25 @@ struct FFactoryMachineRuntimeData
 	bool bOutputBlocked = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	TArray<FFactoryItemStack> InputInventory;
+	TArray<FFactoryMachinePortStorage> InputStorageByPort;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	TArray<FFactoryItemStack> OutputInventory;
+	TArray<FFactoryMachinePortStorage> OutputStorageByPort;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TMap<EFactoryResourceType, int32> InternalStorage;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	bool bIsExtractor = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	EFactoryResourceType ExtractedResourceType = EFactoryResourceType::None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	float ExtractionProgress = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	float ExtractionRatePerSecond = 1.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	int32 OutputRoundRobinIndex = 0;

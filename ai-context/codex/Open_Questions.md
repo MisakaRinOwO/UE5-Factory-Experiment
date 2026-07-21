@@ -1,6 +1,6 @@
 # FactoryExperiment Open Questions
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 This file tracks unclear requirements or design choices that should be confirmed with the user before changing core direction.
 
@@ -64,7 +64,7 @@ Behavior:
 
 - Conveyor data updates on `AFactoryManager`'s `0.2s` simulation interval.
 - Resource mesh visuals interpolate every tick between fixed-step conveyor cells.
-- `UFactoryResourceVisualDataAsset` maps resource types to meshes.
+- `UFactoryResourceDataAsset` maps resource types to moving meshes, vein meshes, and stack sizes.
 - Debug strings/resource names remain useful if visual meshes are not configured.
 
 Future options:
@@ -80,7 +80,7 @@ Current behavior:
 
 - Ore/resource data moves on the fixed `AFactoryManager` simulation timer.
 - Moving ore visuals interpolate every tick between the segment's previous and current coords.
-- Static ore vein visuals are generated from `ResourceMapData` using `ResourceVisualData.ResourceVeinMeshesByType`.
+- Static ore vein visuals are generated from `ResourceMapData` using `ResourceData.ResourceVeinMeshesByType`.
 - Removing a conveyor carrying ore hides the moving ore HISM instance instead of removing it.
 
 Reason:
@@ -132,22 +132,28 @@ Next-level enum products:
 - Copper ingot
 - Copper wire
 
-Recipe DA decisions should wait until First Production Recipe work.
+Recipe DA decisions are now partly resolved:
+
+- One `UFactoryRecipeDataAsset` represents one unique recipe.
+- Buildings reference recipes directly through `RecipeData`.
+- `AFactoryManager.RecipeDatabase` was removed as old design residue.
+- `DefaultRecipeId` was removed as old design residue.
 
 ## First Production Recipe
 
-Question: What exact first recipe should the assembler run?
-
-Current assumption:
+Decision:
 
 - Miner produces a raw resource.
-- Assembler consumes that resource and produces a processed resource.
+- Smelter consumes that resource and produces a processed resource.
 - Storage accepts the processed resource.
+- First processing target is `1 IronOre -> 3s -> 1 IronIngot`.
 
-Needs confirmation:
+Remaining work:
 
-- Example recipe: `2 IronOre -> 1 IronPlate`.
-- Craft time and stack limits are not yet confirmed.
+- Implement smelter input consumption.
+- Implement `CraftProgress` over `RecipeData.CraftTime`.
+- Write recipe output into smelter output storage.
+- Flush smelter output storage to conveyor/storage.
 
 ## Resolved: README and Context Update Workflow
 

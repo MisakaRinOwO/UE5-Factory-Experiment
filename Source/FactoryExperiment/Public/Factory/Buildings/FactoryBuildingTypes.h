@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Factory/FactoryTypes.h"
+#include "Factory/Resources/FactoryResourceMapDataAsset.h"
 #include "Grid/GridCoord.h"
 #include "FactoryBuildingTypes.generated.h"
 
@@ -24,6 +25,9 @@ struct FFactoryBuildingPort
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FName AcceptedItemId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TSet<EFactoryResourceType> AcceptedResourceTypes;
 };
 
 USTRUCT(BlueprintType)
@@ -42,6 +46,9 @@ struct FFactoryPlacedBuildingPort
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FName AcceptedItemId;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TSet<EFactoryResourceType> AcceptedResourceTypes;
 };
 
 USTRUCT(BlueprintType)

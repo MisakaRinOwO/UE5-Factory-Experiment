@@ -8,6 +8,7 @@
 
 class AFactoryBuilding;
 class UStaticMesh;
+class UFactoryRecipeDataAsset;
 
 UCLASS(BlueprintType)
 class FACTORYEXPERIMENT_API UFactoryBuildingDataAsset : public UDataAsset
@@ -43,5 +44,8 @@ public:
 	float ConveyorSpeed = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine", meta = (EditCondition = "!bIsConveyor"))
-	FName DefaultRecipeId;
+	TObjectPtr<UFactoryRecipeDataAsset> RecipeData;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine|Extractor", meta = (EditCondition = "!bIsConveyor", ClampMin = "0.0"))
+	float ExtractionRatePerSecond = 1.0f;
 };

@@ -19,9 +19,8 @@ class UHierarchicalInstancedStaticMeshComponent;
 class USceneComponent;
 class UFactoryBuildingDataAsset;
 class UFactoryDeveloperModeWidget;
-class UFactoryRecipeDataAsset;
+class UFactoryResourceDataAsset;
 class UFactoryResourceMapDataAsset;
-class UFactoryResourceVisualDataAsset;
 class UUserWidget;
 
 UCLASS()
@@ -38,19 +37,19 @@ protected:
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
-	TObjectPtr<UFactoryRecipeDataAsset> RecipeDatabase;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<UFactoryResourceMapDataAsset> ResourceMapData;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
-	TObjectPtr<UFactoryResourceVisualDataAsset> ResourceVisualData;
+	TObjectPtr<UFactoryResourceDataAsset> ResourceData;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<USceneComponent> TransformComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	float SimulationStepInterval = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory|Visuals")
+	FVector MovingResourceVisualScale = FVector(0.7f, 0.7f, 1.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Placement")
 	TObjectPtr<UFactoryBuildingDataAsset> SelectedBuilding;
@@ -190,6 +189,8 @@ private:
 	void UpdateConveyors(float DeltaTime);
 	void UpdateResourceVisuals(float DeltaTime);
 	bool TryPushResourceToConveyor(const FGridCoord& SourceCoord, const FGridCoord& ConveyorCoord, EFactoryResourceType ResourceType);
+	bool TryPushResourceToOutputTarget(const FGridCoord& SourceCoord, const FGridCoord& TargetCoord, EFactoryResourceType ResourceType);
+	bool TryAddResourceToMachineInput(const FGridCoord& SourceCoord, const FGridCoord& TargetCoord, EFactoryResourceType ResourceType);
 
 	// Placement internals
 	void CreateInitialChunks();
@@ -201,8 +202,20 @@ private:
 	bool IsLocalCoordInsideFootprint(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize) const;
 	bool IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port, const FIntPoint& FootprintSize) const;
 	bool IsResourceExtractor(const UFactoryBuildingDataAsset* BuildingData) const;
+	TSet<EFactoryResourceType> BuildAcceptedResourceTypesForPort(
+		const UFactoryBuildingDataAsset* BuildingData,
+		const FFactoryBuildingPort& Port
+	) const;
 	EFactoryResourceType FindResourceAtCoord(const FGridCoord& Coord) const;
 	EFactoryResourceType FindExtractedResourceForBuilding(const FFactoryPlacedBuildingInstance& BuildingInstance) const;
+	void InitializeMachinePortStorage(FFactoryMachineRuntimeData& RuntimeData) const;
+	int32 GetResourceStackSize(EFactoryResourceType ResourceType) const;
+	FFactoryMachineRuntimeData* FindMachineRuntimeDataByBuildingId(int32 BuildingId);
+	bool TryAddResourceToPortStorage(FFactoryMachinePortStorage& PortStorage, EFactoryResourceType ResourceType, int32 Count);
+	bool TryAddResourceToInternalStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType, int32 Count);
+	bool TryFlushMachineInternalStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
+	bool TryStoreResourceInMachineOutput(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
+	bool TryFlushMachineOutputStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
 
 	// Removal internals
 	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
@@ -216,6 +229,7 @@ private:
 	void RefreshConveyorConnectionsAroundCoord(const FGridCoord& Coord);
 	bool TryFindConveyorOutputTarget(const FFactoryConveyorSegment& ConveyorSegment, FGridCoord& OutTargetCoord) const;
 	bool HasCompatibleInputPort(const FFactoryConveyorSegment& ConveyorSegment, const FGridCoord& SourceCoord, EFactoryResourceType ResourceType) const;
+	bool HasCompatibleMachineInputAtCoord(const FGridCoord& TargetCoord, const FGridCoord& SourceCoord, EFactoryResourceType ResourceType) const;
 	bool DoesPortAcceptResource(const FFactoryPlacedBuildingPort& Port, EFactoryResourceType ResourceType) const;
 	UHierarchicalInstancedStaticMeshComponent* GetOrCreateResourceVisualComponent(EFactoryResourceType ResourceType);
 	int32 AddResourceVisual(EFactoryResourceType ResourceType, const FGridCoord& FromCoord, const FGridCoord& ToCoord);

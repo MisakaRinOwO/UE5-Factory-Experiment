@@ -4,6 +4,8 @@
 #include "Factory/Buildings/FactoryBuilding.h"
 #include "FactoryMachine.generated.h"
 
+class UFactoryRecipeDataAsset;
+
 UCLASS()
 class FACTORYEXPERIMENT_API AFactoryMachine : public AFactoryBuilding
 {
@@ -11,5 +13,5 @@ class FACTORYEXPERIMENT_API AFactoryMachine : public AFactoryBuilding
 
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	FName DefaultRecipeId;
+	TObjectPtr<UFactoryRecipeDataAsset> RecipeData;
 };
