@@ -28,6 +28,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	FIntPoint FootprintSize = FIntPoint(1, 1);
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory|Visuals")
+	TObjectPtr<UStaticMesh> PreviewMesh;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TArray<FFactoryBuildingPort> Ports;
 

@@ -17,6 +17,8 @@
 class AFactoryBuilding;
 class UHierarchicalInstancedStaticMeshComponent;
 class USceneComponent;
+class UStaticMesh;
+class UStaticMeshComponent;
 class UFactoryBuildingDataAsset;
 class UFactoryDeveloperModeWidget;
 class UFactoryResourceDataAsset;
@@ -45,6 +47,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory")
 	TObjectPtr<USceneComponent> TransformComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory|Placement")
+	TObjectPtr<UStaticMeshComponent> PlacementPreviewComponent;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	float SimulationStepInterval = 0.2f;
 
@@ -67,7 +72,10 @@ public:
 	bool bDrawDebugHoveredCell = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Debug")
-	bool bUpdateHoveredCellFromMouseRaycast = true;
+	bool bDrawDebugConveyorText = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Factory|Debug")
+	bool bDrawDebugMachineText = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Factory|Debug")
 	FGridCoord DebugHoveredCellCoord;
@@ -180,6 +188,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Factory|Debug|UI")
 	void SetDeveloperModeWidget(UFactoryDeveloperModeWidget* Widget);
 
+	UFUNCTION(BlueprintCallable, Category = "Factory|UI")
+	bool GetMachineRuntimeDataAtCoord(const FGridCoord& Coord, FFactoryMachineRuntimeData& OutRuntimeData) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|UI")
+	bool GetMachineRuntimeDataByBuildingId(int32 BuildingId, FFactoryMachineRuntimeData& OutRuntimeData) const;
+
 private:
 	static constexpr float CellSize = 100.0f;
 
@@ -211,11 +225,18 @@ private:
 	void InitializeMachinePortStorage(FFactoryMachineRuntimeData& RuntimeData) const;
 	int32 GetResourceStackSize(EFactoryResourceType ResourceType) const;
 	FFactoryMachineRuntimeData* FindMachineRuntimeDataByBuildingId(int32 BuildingId);
+	const FFactoryMachineRuntimeData* FindMachineRuntimeDataByBuildingId(int32 BuildingId) const;
 	bool TryAddResourceToPortStorage(FFactoryMachinePortStorage& PortStorage, EFactoryResourceType ResourceType, int32 Count);
 	bool TryAddResourceToInternalStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType, int32 Count);
 	bool TryFlushMachineInternalStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
 	bool TryStoreResourceInMachineOutput(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
 	bool TryFlushMachineOutputStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
+	bool TryConsumeRecipeInputs(FFactoryMachineRuntimeData& RuntimeData);
+	bool TryStoreRecipeOutputs(FFactoryMachineRuntimeData& RuntimeData);
+	bool TryAddResourceToMachineStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryMachineStorageType StorageType, EFactoryResourceType ResourceType, int32 Count);
+	bool TryRemoveResourceFromMachineStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryMachineStorageType StorageType, EFactoryResourceType ResourceType, int32 Count);
+	bool TryAddResourceToStorageMap(TMap<EFactoryResourceType, int32>& StorageMap, EFactoryResourceType ResourceType, int32 Count) const;
+	bool TryRemoveResourceFromStorageMap(TMap<EFactoryResourceType, int32>& StorageMap, EFactoryResourceType ResourceType, int32 Count) const;
 
 	// Removal internals
 	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
@@ -246,6 +267,9 @@ private:
 	bool TryGetMouseRaycastGridCoord(FGridCoord& OutCoord) const;
 	void SetHoveredCell(const FGridCoord& Coord);
 	void ClearHoveredCell();
+	void UpdatePlacementPreview();
+	void HidePlacementPreview();
+	UStaticMesh* GetPreviewMeshForBuilding(const UFactoryBuildingDataAsset* BuildingData) const;
 	void UpdateDeveloperModeCoordDisplay(const FGridCoord& CellCoord);
 	void UpdateDeveloperModeSelectedBuildableDisplay();
 
@@ -256,6 +280,7 @@ private:
 	void DrawDebugCellBounds(const FGridCoord& Coord, const FColor& Color, float Thickness) const;
 	void DrawDebugCellBounds(const FGridCoord& MinCoord, const FGridCoord& MaxCoord, const FColor& Color, float Thickness) const;
 	void DrawDebugConveyorState() const;
+	void DrawDebugMachineState() const;
 
 	// Grid helpers
 	FGridCoord WorldLocationToGridCoord(const FVector& WorldLocation) const;

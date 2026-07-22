@@ -8,6 +8,14 @@
 
 class UFactoryRecipeDataAsset;
 
+UENUM(BlueprintType)
+enum class EFactoryMachineStorageType : uint8
+{
+	Internal UMETA(DisplayName = "Internal"),
+	InputPort UMETA(DisplayName = "Input Port"),
+	OutputPort UMETA(DisplayName = "Output Port")
+};
+
 USTRUCT(BlueprintType)
 struct FFactoryMachinePortStorage
 {

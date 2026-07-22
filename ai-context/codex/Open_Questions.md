@@ -1,6 +1,6 @@
 # FactoryExperiment Open Questions
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 This file tracks unclear requirements or design choices that should be confirmed with the user before changing core direction.
 
@@ -139,7 +139,7 @@ Recipe DA decisions are now partly resolved:
 - `AFactoryManager.RecipeDatabase` was removed as old design residue.
 - `DefaultRecipeId` was removed as old design residue.
 
-## First Production Recipe
+## Resolved: First Production Recipe
 
 Decision:
 
@@ -148,12 +148,43 @@ Decision:
 - Storage accepts the processed resource.
 - First processing target is `1 IronOre -> 3s -> 1 IronIngot`.
 
-Remaining work:
+Current behavior:
 
-- Implement smelter input consumption.
-- Implement `CraftProgress` over `RecipeData.CraftTime`.
-- Write recipe output into smelter output storage.
-- Flush smelter output storage to conveyor/storage.
+- Smelter input consumption is implemented.
+- `CraftProgress` advances against `RecipeData.CraftTime`.
+- Recipe output is written into smelter output storage.
+- User verified that the recipe produces `IronIngot`.
+
+Remaining adjacent work:
+
+- Storage accepting the processed resource is still future work.
+- `W_BuildingInfo` exists but is not connected to `PC_Factory` yet.
+
+## Open: Building Info UI Hookup
+
+Known state:
+
+- `W_BuildingInfo` has been created in Blueprint.
+- C++ now exposes machine runtime query APIs that can support UI display for IO slots, stored item/count, recipe id, and production progress.
+
+Needs confirmation/implementation:
+
+- How `PC_Factory` should choose/open/close the widget on building click.
+- Whether selecting a building should pause placement preview, coexist with placement mode, or cancel current build selection.
+- Exact UI refresh cadence: update every simulation step, every tick while open, or only when changed.
+
+## Open: Storage Building Behavior
+
+User direction:
+
+- Storage will be added through Blueprint later.
+- Intended storage behavior: each grid cell can store one resource type.
+
+Needs confirmation before implementation:
+
+- Whether storage should use a separate runtime data struct from processor machines.
+- Whether storage capacity is per occupied grid cell, per port, or whole building.
+- Whether storage should accept all resources by default or use DA-configured accepted resources.
 
 ## Resolved: README and Context Update Workflow
 

@@ -45,10 +45,15 @@ Implemented / added so far:
 - Machine runtime internal storage and per-port storage.
 - Miner extraction rate using `ExtractionRatePerSecond`.
 - Conveyor delivery into adjacent machine input storage.
+- Selected-building hover preview using the selected buildable preview mesh.
+- Smelter recipe processing for `1 IronOre -> 3s -> 1 IronIngot`.
+- Machine recipe/progress debug text with separate conveyor and machine debug text toggles.
+- Blueprint-callable machine runtime query APIs for future building info UI.
+- `W_BuildingInfo` has been created in Blueprint, but it is not connected to `PC_Factory` yet.
 
 Immediate next step:
 
-- Implement smelter recipe processing: `1 IronOre -> 3s -> 1 IronIngot`.
+- Connect `W_BuildingInfo` from `PC_Factory` so clicking a building can display IO slots, stored resources, recipe id, and production progress.
 
 ## Core Design Direction
 
@@ -135,7 +140,7 @@ Machine runtime storage currently includes shared internal storage plus per-port
 Current working slice:
 
 ```text
-Resource Map -> Miner -> Conveyor -> Smelter input storage
+Resource Map -> Miner -> Conveyor/Adjacent Input -> Smelter -> IronIngot output storage/conveyor
 ```
 
 The miner is currently treated as a 1x1 extractor. It mines into shared internal storage at `ExtractionRatePerSecond`, then flushes to conveyors or adjacent machine input ports. Larger miners may later scale output by resource coverage ratio.
@@ -199,6 +204,7 @@ The system should avoid iterating every cell in every chunk during simulation.
 
 Current resource movement:
 
+- `SimulationStep` updates conveyors before machines, so newly pushed machine/miner outputs remain visible for one fixed-step interval instead of being consumed/moved immediately in the same step.
 - Miner output is updated by the centralized simulation timer.
 - Miner production is rate-limited by `ExtractionRatePerSecond`.
 - Conveyor data advances at the fixed simulation step.
@@ -279,8 +285,6 @@ Later debug additions may include:
 
 - Conveyor arrows
 - Chunk boundaries
-- Selected building state
-- Machine recipe/inventory/progress
 - Active chunk count
 - Active conveyor count
 - Simulation step counter
@@ -291,6 +295,9 @@ Current developer UI also reports:
 - Current buildable selection.
 - Current build direction.
 - Building type id for occupied cells.
+- Machine recipe id and crafting progress through debug text.
+
+`AFactoryManager` now has separate text-debug toggles for conveyor resource text and machine recipe/progress text.
 
 ## Planned MVP Milestones
 
@@ -307,8 +314,11 @@ Current developer UI also reports:
 11. Stabilize moving ore visuals when deleting conveyors. Done.
 12. Add recipe data assets and machine internal storage. Done.
 13. Implement conveyor delivery into machine input storage. Done.
-14. Implement smelter recipe processing.
-15. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
+14. Implement smelter recipe processing. Done.
+15. Create building info UI widget. Done, but not connected to `PC_Factory` yet.
+16. Connect building info UI from `PC_Factory` for clicked buildings.
+17. Add storage behavior.
+18. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
 
 ## Portfolio Focus
 

@@ -1,6 +1,6 @@
 # FactoryExperiment Codex Master Prompt
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Project Summary
 
@@ -16,6 +16,7 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Centralized fixed-step simulation.
 - Debug UI and debug drawing for data-driven state.
 - Smooth resource mesh feedback layered over fixed-step data simulation.
+- Selected-building hover preview and machine production debug text.
 
 ## Current Direction
 
@@ -26,7 +27,7 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Negative coordinates: supported through floor-style chunk conversion and corrected local modulo.
 - Query policy: `GetCell` is read-only and should not create chunks; `GetOrCreateCell` is for placement/world modification.
 - Placement MVP: manual single-cell placement first, with build direction rotation.
-- First production chain target: `Miner -> Conveyor -> Assembler -> Storage`.
+- First production chain target: `Miner -> Conveyor -> Smelter -> Storage`.
 - Conveyor identity: stable gameplay identity is `FGridCoord`, not HISM instance index.
 - Conveyor visuals: HISM component cached per conveyor data asset.
 - Port data: buildable DA ports are converted into runtime world ports and should be reused for conveyor/building connection rules.
@@ -67,12 +68,18 @@ Implemented or present in the repository:
 - Conveyor output can deliver resources into adjacent non-extractor machine input storage.
 - Developer UI reports hovered resource, hovered building type id, selected buildable, and build direction.
 - Number keys select conveyor/miner, and `R` rotates the build direction clockwise.
+- Selected-building hover preview exists on `AFactoryManager`; it uses the selected buildable's preview mesh and falls back to conveyor mesh for conveyors.
+- Smelter recipe processing works for the first recipe: `1 IronOre -> 3s -> 1 IronIngot`.
+- `AFactoryManager` updates conveyors before machines so newly output resources remain visible for one fixed-step interval.
+- Machine debug text can show `RecipeId` and `CraftProgress / CraftTime`.
+- Conveyor resource text and machine recipe/progress text have separate debug toggles.
+- Machine runtime data can be queried from Blueprint by hovered/selected coord or building id for future UI.
+- `W_BuildingInfo` exists on the Blueprint/content side, but it is not connected to `PC_Factory` yet.
 
 Current incomplete areas:
 
-- Smelter recipe processing is not implemented yet.
 - Storage logic is not implemented yet.
-- Recipe output buffering from processor machines is not implemented yet.
+- `W_BuildingInfo` is not wired into click-selection / `PC_Factory` yet.
 - Conveyor movement is data-correct for MVP but does not yet use conveyor speed as a throughput/progress parameter.
 - Moving resource visual removal is MVP-safe but not memory-reusing yet; hidden instances may accumulate until a future pooling/free-list pass. Keep this implementation for now because it preserves correctness and avoids extra lifecycle complexity before assembler/storage/recipe flow is complete.
 - Building footprint lookup should likely move toward a coord-keyed lookup for robust hover/delete.
@@ -99,14 +106,17 @@ When continuing work on this project:
 ## Recommended Next Implementation Order
 
 1. Keep the current miner/conveyor/resource visual slice runnable.
-2. Implement the next production slice:
+2. Keep the current smelter recipe slice runnable:
+   - `1 IronOre -> 3s -> 1 IronIngot`.
+   - Validate direct `Miner -> Smelter` and `Miner -> Conveyor -> Smelter` paths.
+3. Implement the next production/UI slice:
    - Storage accepts resources from conveyors.
-   - Assembler consumes inputs and produces outputs from recipe data.
+   - Click a building in `PC_Factory` and open `W_BuildingInfo`.
    - Conveyor can deliver into building input ports.
-3. Add debug UI for machine inventory, crafting progress, and output blocked state.
-4. Improve building footprint lookup:
+4. Add BP UI display for machine inventory, crafting progress, and output blocked state using the existing runtime query APIs.
+5. Improve building footprint lookup:
    - Add coord-keyed mapping so hovering any footprint cell resolves the same building instance.
-5. Consider conveyor speed/progress only after the fixed-step production chain is complete.
+6. Consider conveyor speed/progress only after the fixed-step production chain is complete.
 
 ## Verification Expectations
 

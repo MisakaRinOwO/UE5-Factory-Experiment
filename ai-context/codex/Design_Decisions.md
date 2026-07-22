@@ -1,6 +1,6 @@
 # FactoryExperiment Design Decisions
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 This file records the reasoning behind the current implementation direction. It is based on the existing project memory and current repository state.
 
@@ -467,12 +467,25 @@ Miner decision:
 - Miner extraction is configured as `ExtractionRatePerSecond`, for example `1.0 = one ore/sec`.
 - This prevents direct `Miner -> Smelter` from bypassing mining rate compared with `Miner -> Conveyor -> Smelter`.
 
+Current processor-machine behavior:
+
+- Processor machines consume inputs from `InputStorageByPort`.
+- Production advances `CraftProgress` against `RecipeData.CraftTime` on the fixed simulation step.
+- Completed recipes write outputs into `OutputStorageByPort`.
+- Output storage flushes to connected conveyors or compatible adjacent machine input ports.
+- The first verified recipe is `1 IronOre -> 3s -> 1 IronIngot` through the smelter.
+
 Future optimization/options:
 
-- Add processor-machine crafting: consume input storage, advance `CraftProgress`, write output storage/internal output buffer.
 - Add explicit inventory capacity per machine/port if stack-size-only capacity becomes too coarse.
 - Add recipe library/search only when UI recipe selection or save/load lookup needs it.
 - Add conveyor speed accumulators after the smelter loop is stable; current conveyors still advance one cell per `0.2s` simulation step.
+
+Simulation ordering decision:
+
+- `AFactoryManager::SimulationStep` updates conveyors before machines.
+- This keeps newly pushed miner/machine outputs visible on the target conveyor for one fixed-step interval.
+- It also prevents immediate same-step movement/consumption from making upstream conveyor resource debug text and visuals appear to skip cells.
 
 Miner/resource map direction:
 
@@ -500,6 +513,32 @@ Reasoning:
 - `BuildingId` is runtime identity, not user-facing display name.
 - `BuildingTypeId` from the DA is the intended display/source id for hover UI.
 - Selected buildable and direction belong in the developer HUD because they are core placement state.
+
+Current additional debug/UI support:
+
+- Hover raycast is globally active during runtime instead of being gated by an update flag.
+- `AFactoryManager` exposes separate toggles for conveyor resource debug text and machine recipe/progress debug text.
+- Machine debug text shows `RecipeId` and `CraftProgress / CraftTime`.
+- Blueprint runtime queries exist for looking up machine state by grid coord or building id.
+- `W_BuildingInfo` exists in content, but it is intentionally not counted as gameplay-complete until `PC_Factory` opens and refreshes it.
+
+## Selected Building Hover Preview
+
+Decision: show a lightweight selected-building preview from `AFactoryManager` using the selected buildable's mesh.
+
+Current behavior:
+
+- `UFactoryBuildingDataAsset` includes `PreviewMesh`.
+- `AFactoryManager` owns a `PlacementPreviewComponent`.
+- The preview follows the hovered grid cell and selected build direction.
+- Conveyor preview falls back to the conveyor mesh if no explicit preview mesh is configured.
+- Invalid placement can be indicated visually through custom depth.
+
+Reasoning:
+
+- Preview is part of placement feedback and should work before the Blueprint production UI is finished.
+- A simple static mesh preview is enough for MVP and avoids duplicating full building actor logic.
+- More polished material tinting/ghost animation can come later after production/storage loops are stable.
 
 ## Build Selection Input
 
