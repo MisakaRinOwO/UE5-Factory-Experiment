@@ -1,6 +1,6 @@
 # FactoryExperiment Codex Master Prompt
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 ## Project Summary
 
@@ -17,6 +17,7 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Debug UI and debug drawing for data-driven state.
 - Smooth resource mesh feedback layered over fixed-step data simulation.
 - Selected-building hover preview and machine production debug text.
+- Storage input/output runtime with slot-based resource storage.
 
 ## Current Direction
 
@@ -35,6 +36,7 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Debug: developer UI plus debug draw should make cell/chunk/building/conveyor state visible.
 - Resource data: `UFactoryResourceDataAsset` maps resource types to moving meshes, static vein meshes, and stack sizes; simulation remains data-first.
 - Recipe data: one `UFactoryRecipeDataAsset` represents one unique recipe. Buildings reference recipe DA directly through `RecipeData`; old global recipe database/string lookup paths should not be reintroduced.
+- Buildable data: category editability is driven by `BuildableType`; use `Extractor` for miner-like resource extraction buildings and `Storage` for storage buildings.
 
 ## Current Progress Snapshot
 
@@ -75,14 +77,21 @@ Implemented or present in the repository:
 - Conveyor resource text and machine recipe/progress text have separate debug toggles.
 - Machine runtime data can be queried from Blueprint by hovered/selected coord or building id for future UI.
 - `W_BuildingInfo` exists on the Blueprint/content side, but it is not connected to `PC_Factory` yet.
+- Storage runtime data exists separately from machine runtime data.
+- Storage input receives resources through DA-authored input ports.
+- Storage output flushes resources through DA-authored output ports using the same conveyor/building output target path as machines.
+- Storage slots are controlled by `AvailableSlots`; each slot stores one resource type up to the resource stack size.
+- Storage runtime data can be queried from Blueprint by coord or building id.
+- Miner/extractor debug text shows extracted resource, extraction progress/rate, and internal storage.
+- Storage debug text shows slot contents.
 
 Current incomplete areas:
 
-- Storage logic is not implemented yet.
 - `W_BuildingInfo` is not wired into click-selection / `PC_Factory` yet.
 - Conveyor movement is data-correct for MVP but does not yet use conveyor speed as a throughput/progress parameter.
 - Moving resource visual removal is MVP-safe but not memory-reusing yet; hidden instances may accumulate until a future pooling/free-list pass. Keep this implementation for now because it preserves correctness and avoids extra lifecycle complexity before assembler/storage/recipe flow is complete.
 - Building footprint lookup should likely move toward a coord-keyed lookup for robust hover/delete.
+- Future architecture may unify miner/extractor production with processor-machine recipe production through a terrain/resource input source. Do not do this during the current MVP unless explicitly requested; the current miner path is verified and should stay stable.
 
 ## Agent Operating Rules
 
@@ -110,13 +119,17 @@ When continuing work on this project:
    - `1 IronOre -> 3s -> 1 IronIngot`.
    - Validate direct `Miner -> Smelter` and `Miner -> Conveyor -> Smelter` paths.
 3. Implement the next production/UI slice:
-   - Storage accepts resources from conveyors.
+   - Keep storage input/output behavior stable.
    - Click a building in `PC_Factory` and open `W_BuildingInfo`.
    - Conveyor can deliver into building input ports.
 4. Add BP UI display for machine inventory, crafting progress, and output blocked state using the existing runtime query APIs.
 5. Improve building footprint lookup:
    - Add coord-keyed mapping so hovering any footprint cell resolves the same building instance.
 6. Consider conveyor speed/progress only after the fixed-step production chain is complete.
+7. Later, consider `Extractor/Machine Runtime Unification`:
+   - Miner becomes a special machine with terrain/resource-map input.
+   - Normal processor machines and miners share the same production lifecycle.
+   - This can also motivate cleaning up the currently unified `UFactoryBuildingDataAsset`.
 
 ## Verification Expectations
 

@@ -22,7 +22,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	EFactoryBuildableType BuildableType = EFactoryBuildableType::Machine;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory", meta = (EditCondition = "!bIsConveyor"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory", meta = (EditCondition = "BuildableType != EFactoryBuildableType::Conveyor"))
 	TSubclassOf<AFactoryBuilding> BuildingActorClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
@@ -34,21 +34,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
 	TArray<FFactoryBuildingPort> Ports;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Factory")
-	bool bIsConveyor = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "bIsConveyor"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "BuildableType == EFactoryBuildableType::Conveyor"))
 	TObjectPtr<UStaticMesh> ConveyorMesh;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "bIsConveyor"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "BuildableType == EFactoryBuildableType::Conveyor"))
 	float ConveyorMeshYawOffset = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "bIsConveyor"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Conveyor", meta = (EditCondition = "BuildableType == EFactoryBuildableType::Conveyor"))
 	float ConveyorSpeed = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine", meta = (EditCondition = "!bIsConveyor"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine", meta = (EditCondition = "BuildableType == EFactoryBuildableType::Machine"))
 	TObjectPtr<UFactoryRecipeDataAsset> RecipeData;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Machine|Extractor", meta = (EditCondition = "!bIsConveyor", ClampMin = "0.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Extractor", meta = (EditCondition = "BuildableType == EFactoryBuildableType::Extractor", ClampMin = "0.0"))
 	float ExtractionRatePerSecond = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Storage", meta = (EditCondition = "BuildableType == EFactoryBuildableType::Storage", ClampMin = "0"))
+	int32 AvailableSlots = 1;
 };

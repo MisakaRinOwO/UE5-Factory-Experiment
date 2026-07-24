@@ -10,6 +10,7 @@
 #include "Factory/Debug/FactoryDebugTypes.h"
 #include "Factory/Grid/FactoryGridTypes.h"
 #include "Factory/Resources/FactoryResourceMapDataAsset.h"
+#include "Factory/Storage/FactoryStorageTypes.h"
 #include "Grid/GridCoord.h"
 
 #include "FactoryManager.generated.h"
@@ -92,6 +93,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TArray<FFactoryMachineRuntimeData> MachineRuntimeData;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
+	TArray<FFactoryStorageRuntimeData> StorageRuntimeData;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Runtime", meta = (AllowPrivateAccess = "true"))
 	TMap<FGridCoord, FFactoryPlacedBuildingInstance> BuildingInstancesByCellCoord;
@@ -194,6 +198,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Factory|UI")
 	bool GetMachineRuntimeDataByBuildingId(int32 BuildingId, FFactoryMachineRuntimeData& OutRuntimeData) const;
 
+	UFUNCTION(BlueprintCallable, Category = "Factory|UI")
+	bool GetStorageRuntimeDataAtCoord(const FGridCoord& Coord, FFactoryStorageRuntimeData& OutRuntimeData) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Factory|UI")
+	bool GetStorageRuntimeDataByBuildingId(int32 BuildingId, FFactoryStorageRuntimeData& OutRuntimeData) const;
+
 private:
 	static constexpr float CellSize = 100.0f;
 
@@ -201,10 +211,11 @@ private:
 	void SimulationStep();
 	void UpdateMachines(float DeltaTime);
 	void UpdateConveyors(float DeltaTime);
+	void UpdateStorages(float DeltaTime);
 	void UpdateResourceVisuals(float DeltaTime);
 	bool TryPushResourceToConveyor(const FGridCoord& SourceCoord, const FGridCoord& ConveyorCoord, EFactoryResourceType ResourceType);
 	bool TryPushResourceToOutputTarget(const FGridCoord& SourceCoord, const FGridCoord& TargetCoord, EFactoryResourceType ResourceType);
-	bool TryAddResourceToMachineInput(const FGridCoord& SourceCoord, const FGridCoord& TargetCoord, EFactoryResourceType ResourceType);
+	bool TryAddResourceToBuildingInput(const FGridCoord& SourceCoord, const FGridCoord& TargetCoord, EFactoryResourceType ResourceType);
 
 	// Placement internals
 	void CreateInitialChunks();
@@ -215,6 +226,9 @@ private:
 	TArray<FFactoryPlacedBuildingPort> BuildWorldPorts(const UFactoryBuildingDataAsset* BuildingData, const FGridCoord& OriginCoord, EFactoryDirection Direction) const;
 	bool IsLocalCoordInsideFootprint(const FGridCoord& LocalCoord, const FIntPoint& FootprintSize) const;
 	bool IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port, const FIntPoint& FootprintSize) const;
+	bool IsConveyorBuildable(const UFactoryBuildingDataAsset* BuildingData) const;
+	bool UsesMachineRuntimeData(const UFactoryBuildingDataAsset* BuildingData) const;
+	bool UsesStorageRuntimeData(const UFactoryBuildingDataAsset* BuildingData) const;
 	bool IsResourceExtractor(const UFactoryBuildingDataAsset* BuildingData) const;
 	TSet<EFactoryResourceType> BuildAcceptedResourceTypesForPort(
 		const UFactoryBuildingDataAsset* BuildingData,
@@ -226,6 +240,8 @@ private:
 	int32 GetResourceStackSize(EFactoryResourceType ResourceType) const;
 	FFactoryMachineRuntimeData* FindMachineRuntimeDataByBuildingId(int32 BuildingId);
 	const FFactoryMachineRuntimeData* FindMachineRuntimeDataByBuildingId(int32 BuildingId) const;
+	FFactoryStorageRuntimeData* FindStorageRuntimeDataByBuildingId(int32 BuildingId);
+	const FFactoryStorageRuntimeData* FindStorageRuntimeDataByBuildingId(int32 BuildingId) const;
 	bool TryAddResourceToPortStorage(FFactoryMachinePortStorage& PortStorage, EFactoryResourceType ResourceType, int32 Count);
 	bool TryAddResourceToInternalStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType, int32 Count);
 	bool TryFlushMachineInternalStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryResourceType ResourceType);
@@ -237,6 +253,10 @@ private:
 	bool TryRemoveResourceFromMachineStorage(FFactoryMachineRuntimeData& RuntimeData, EFactoryMachineStorageType StorageType, EFactoryResourceType ResourceType, int32 Count);
 	bool TryAddResourceToStorageMap(TMap<EFactoryResourceType, int32>& StorageMap, EFactoryResourceType ResourceType, int32 Count) const;
 	bool TryRemoveResourceFromStorageMap(TMap<EFactoryResourceType, int32>& StorageMap, EFactoryResourceType ResourceType, int32 Count) const;
+	bool TryAddResourceToStorageInput(const FGridCoord& SourceCoord, const FGridCoord& TargetCoord, EFactoryResourceType ResourceType);
+	bool TryAddResourceToStorageRuntime(FFactoryStorageRuntimeData& RuntimeData, EFactoryResourceType ResourceType, int32 Count);
+	bool CanStorageRuntimeAcceptResource(const FFactoryStorageRuntimeData& RuntimeData, EFactoryResourceType ResourceType, int32 Count) const;
+	bool TryFlushStorageOutput(FFactoryStorageRuntimeData& RuntimeData);
 
 	// Removal internals
 	bool RemoveBuildingAtCoord(const FGridCoord& Coord);
@@ -250,7 +270,7 @@ private:
 	void RefreshConveyorConnectionsAroundCoord(const FGridCoord& Coord);
 	bool TryFindConveyorOutputTarget(const FFactoryConveyorSegment& ConveyorSegment, FGridCoord& OutTargetCoord) const;
 	bool HasCompatibleInputPort(const FFactoryConveyorSegment& ConveyorSegment, const FGridCoord& SourceCoord, EFactoryResourceType ResourceType) const;
-	bool HasCompatibleMachineInputAtCoord(const FGridCoord& TargetCoord, const FGridCoord& SourceCoord, EFactoryResourceType ResourceType) const;
+	bool HasCompatibleBuildingInputAtCoord(const FGridCoord& TargetCoord, const FGridCoord& SourceCoord, EFactoryResourceType ResourceType) const;
 	bool DoesPortAcceptResource(const FFactoryPlacedBuildingPort& Port, EFactoryResourceType ResourceType) const;
 	UHierarchicalInstancedStaticMeshComponent* GetOrCreateResourceVisualComponent(EFactoryResourceType ResourceType);
 	int32 AddResourceVisual(EFactoryResourceType ResourceType, const FGridCoord& FromCoord, const FGridCoord& ToCoord);
@@ -281,6 +301,7 @@ private:
 	void DrawDebugCellBounds(const FGridCoord& MinCoord, const FGridCoord& MaxCoord, const FColor& Color, float Thickness) const;
 	void DrawDebugConveyorState() const;
 	void DrawDebugMachineState() const;
+	void DrawDebugStorageState() const;
 
 	// Grid helpers
 	FGridCoord WorldLocationToGridCoord(const FVector& WorldLocation) const;

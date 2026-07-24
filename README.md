@@ -50,6 +50,10 @@ Implemented / added so far:
 - Machine recipe/progress debug text with separate conveyor and machine debug text toggles.
 - Blueprint-callable machine runtime query APIs for future building info UI.
 - `W_BuildingInfo` has been created in Blueprint, but it is not connected to `PC_Factory` yet.
+- Buildable data category editability is driven by `BuildableType`, including `Machine`, `Extractor`, `Conveyor`, and `Storage`.
+- Storage runtime data with input/output ports, slot capacity, and Blueprint query APIs.
+- Storage input/output transfer using the same conveyor/building port compatibility rules as machines.
+- Miner/extractor debug text showing extracted resource, extraction progress/rate, and internal storage.
 
 Immediate next step:
 
@@ -140,10 +144,12 @@ Machine runtime storage currently includes shared internal storage plus per-port
 Current working slice:
 
 ```text
-Resource Map -> Miner -> Conveyor/Adjacent Input -> Smelter -> IronIngot output storage/conveyor
+Resource Map -> Miner -> Conveyor/Adjacent Input -> Smelter -> Conveyor/Storage -> Storage output
 ```
 
 The miner is currently treated as a 1x1 extractor. It mines into shared internal storage at `ExtractionRatePerSecond`, then flushes to conveyors or adjacent machine input ports. Larger miners may later scale output by resource coverage ratio.
+
+Storage uses separate runtime data from processor machines. `AvailableSlots` controls slot count; each slot stores one resource type up to that resource's stack size. Storage input and output both use DA-authored ports and the same output-target path as machines/conveyors.
 
 ### Recipes
 
@@ -197,7 +203,8 @@ The intended update model is:
 ```text
 Update active conveyors
 Update active machines
-Update active item packets
+Update active storages
+Update active item/resource visuals
 ```
 
 The system should avoid iterating every cell in every chunk during simulation.
@@ -207,6 +214,7 @@ Current resource movement:
 - `SimulationStep` updates conveyors before machines, so newly pushed machine/miner outputs remain visible for one fixed-step interval instead of being consumed/moved immediately in the same step.
 - Miner output is updated by the centralized simulation timer.
 - Miner production is rate-limited by `ExtractionRatePerSecond`.
+- Storage output is updated by the centralized simulation timer and outputs at most one resource per step.
 - Conveyor data advances at the fixed simulation step.
 - Resource mesh visuals interpolate per frame between conveyor cells.
 - Static ore vein meshes are generated from resource map coordinates at BeginPlay.
@@ -296,6 +304,8 @@ Current developer UI also reports:
 - Current build direction.
 - Building type id for occupied cells.
 - Machine recipe id and crafting progress through debug text.
+- Miner extracted resource/progress/internal storage through debug text.
+- Storage slot contents through debug text.
 
 `AFactoryManager` now has separate text-debug toggles for conveyor resource text and machine recipe/progress text.
 
@@ -317,8 +327,8 @@ Current developer UI also reports:
 14. Implement smelter recipe processing. Done.
 15. Create building info UI widget. Done, but not connected to `PC_Factory` yet.
 16. Connect building info UI from `PC_Factory` for clicked buildings.
-17. Add storage behavior.
-18. Record a short portfolio demo showing placement, chunk debug, conveyor movement, and production.
+17. Add storage behavior. Done.
+18. Record a short portfolio demo showing placement, chunk debug, conveyor movement, production, and storage.
 
 ## Portfolio Focus
 

@@ -1,6 +1,6 @@
 # FactoryExperiment Design Decisions
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 This file records the reasoning behind the current implementation direction. It is based on the existing project memory and current repository state.
 
@@ -114,6 +114,18 @@ When to revisit:
 - The asset becomes too crowded in the editor.
 - Machine and conveyor validation diverge heavily.
 - Different asset inheritance is needed for authoring clarity.
+- Miner/extractor logic is unified with processor-machine logic through a shared recipe/input-source pipeline.
+
+Future cleanup direction:
+
+- Keep `UFactoryBuildingDataAsset` unified during the MVP because one build-selection path is convenient and already working.
+- After storage/UI/first production loop are stable, consider splitting common buildable data from specialized settings.
+- A likely split is:
+  - common buildable data: type id, buildable type, actor class, footprint, preview mesh, ports
+  - conveyor settings: mesh, speed, belt behavior
+  - processor settings: recipe data, storage rules
+  - extractor settings: terrain/resource input rules
+- This should be a deliberate refactor, not a side quest while the MVP production chain is still being built.
 
 ## Actor-Backed Buildings
 
@@ -466,6 +478,7 @@ Miner decision:
 - Miner output flushes from `InternalStorage` to connected conveyors or adjacent machine input ports.
 - Miner extraction is configured as `ExtractionRatePerSecond`, for example `1.0 = one ore/sec`.
 - This prevents direct `Miner -> Smelter` from bypassing mining rate compared with `Miner -> Conveyor -> Smelter`.
+- Keep this current special-case implementation for the MVP because it is verified and supports the first production chain.
 
 Current processor-machine behavior:
 
@@ -497,6 +510,38 @@ Miner/resource map direction:
 - Future larger miners can scale productivity by resource coverage ratio, for example a 2x2 miner covering one resource cell outputs at 25% rate.
 - If multiple output ports are connected and unblocked, miner output should use round-robin.
 
+## Future Miner and Machine Runtime Unification
+
+Decision: do not refactor this during the current MVP, but keep a path toward unifying miner and processor-machine production.
+
+Current difference:
+
+- Processor machines consume item inputs from `InputStorageByPort`, advance `CraftProgress`, then write outputs to `OutputStorageByPort`.
+- Miners currently use a special extractor path: they read `ResourceMapData`, accumulate extraction progress, write ore into shared `InternalStorage`, then flush output.
+
+Future direction:
+
+- Model miner as a special machine whose input source is terrain/resource-map data rather than item storage.
+- Add a terrain/resource input concept, for example `EFactoryPortType::TerrainInput` or a dedicated input-source setting.
+- A miner recipe could be represented as:
+  - terrain/resource input: `IronOre` vein under footprint
+  - output: `IronOre x1`
+  - craft time or extraction rate
+- `TerrainInput` should not participate in normal conveyor adjacency rules; it should query footprint/resource-map coverage.
+- Normal outputs can still use the same `OutputStorageByPort` and flush path as smelters/assemblers.
+
+Reasoning:
+
+- This would let miners, smelters, assemblers, and future processors share one production lifecycle: acquire input, advance progress, write output, flush output.
+- It would reduce extractor-specific code in `AFactoryManager`.
+- It would also make future Building DA cleanup easier because miner extraction rules become a specialized processor/input-source setting instead of a separate unrelated path.
+- Deferring the refactor protects the already verified miner/conveyor/smelter MVP from avoidable churn.
+
+Recommended timing:
+
+- Finish `W_BuildingInfo` hookup, storage behavior, and the complete `Miner -> Conveyor -> Smelter -> Conveyor -> Storage` loop first.
+- Revisit this as an explicit `Extractor/Machine Runtime Unification` refactor after the MVP loop is demonstrable.
+
 ## Developer Mode Widget Events
 
 Decision: expose C++ events that give Blueprint the display-ready context it needs instead of making the widget infer everything from low-level ids.
@@ -519,8 +564,53 @@ Current additional debug/UI support:
 - Hover raycast is globally active during runtime instead of being gated by an update flag.
 - `AFactoryManager` exposes separate toggles for conveyor resource debug text and machine recipe/progress debug text.
 - Machine debug text shows `RecipeId` and `CraftProgress / CraftTime`.
+- Miner/extractor debug text shows extracted resource, extraction progress/rate, and internal storage.
+- Storage debug text shows slot contents.
 - Blueprint runtime queries exist for looking up machine state by grid coord or building id.
+- Blueprint runtime queries exist for looking up storage state by grid coord or building id.
 - `W_BuildingInfo` exists in content, but it is intentionally not counted as gameplay-complete until `PC_Factory` opens and refreshes it.
+
+## Storage Runtime
+
+Decision: storage uses its own runtime data instead of being forced into machine runtime data.
+
+Current shape:
+
+```text
+FFactoryStorageRuntimeData
+  BuildingId
+  OriginCoord
+  WorldPorts
+  AvailableSlots
+  Slots
+  OutputRoundRobinIndex
+
+FFactoryStorageSlot
+  ResourceType
+  Count
+```
+
+Current behavior:
+
+- `BuildableType == Storage` registers storage runtime data during placement.
+- Removing a storage building removes its storage runtime data.
+- Storage input uses DA-authored input ports, direction checks, and resource filters.
+- Storage output uses DA-authored output ports and the same `TryPushResourceToOutputTarget` path used by machine output.
+- Each simulation step, a storage can output at most one resource.
+- Multiple output ports use round-robin.
+- Each slot holds one resource type up to `UFactoryResourceDataAsset` stack size.
+
+Reasoning:
+
+- Storage is not a processor: it does not consume recipes or advance craft progress.
+- Keeping storage runtime separate avoids overloading `FFactoryMachineRuntimeData` with storage-only semantics.
+- Reusing normal ports keeps storage compatible with conveyors and adjacent buildings without adding a special logistics path.
+
+Future options:
+
+- Add per-slot filters or storage DA item filters.
+- Add pull/request-based output rather than unconditional output.
+- Add UI display through `W_BuildingInfo` using the storage runtime query APIs.
 
 ## Selected Building Hover Preview
 

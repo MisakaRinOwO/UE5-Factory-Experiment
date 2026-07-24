@@ -15,11 +15,12 @@ enum class EFactoryCellOccupancy : uint8
 UENUM(BlueprintType)
 enum class EFactoryBuildableType : uint8
 {
-	None UMETA(DisplayName = "None"),
-	Machine UMETA(DisplayName = "Machine"),
-	Conveyor UMETA(DisplayName = "Conveyor"),
-	Storage UMETA(DisplayName = "Storage"),
-	Decoration UMETA(DisplayName = "Decoration")
+	None = 0 UMETA(DisplayName = "None"),
+	Machine = 1 UMETA(DisplayName = "Machine"),
+	Extractor = 5 UMETA(DisplayName = "Extractor"),
+	Conveyor = 2 UMETA(DisplayName = "Conveyor"),
+	Storage = 3 UMETA(DisplayName = "Storage"),
+	Decoration = 4 UMETA(DisplayName = "Decoration")
 };
 
 UENUM(BlueprintType)

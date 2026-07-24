@@ -82,6 +82,7 @@ void AFactoryManager::Tick(float DeltaTime)
 	if (bDrawDebugMachineText)
 	{
 		DrawDebugMachineState();
+		DrawDebugStorageState();
 	}
 }
 
@@ -93,7 +94,7 @@ bool AFactoryManager::TryPlaceBuilding(
 	EFactoryDirection Direction
 )
 {
-	if (BuildingData && BuildingData->bIsConveyor)
+	if (IsConveyorBuildable(BuildingData))
 	{
 		return TryPlaceConveyor(BuildingData, OriginCoord, Direction);
 	}
@@ -161,7 +162,7 @@ bool AFactoryManager::TryPlaceBuilding(
 		BuildingInstancesByCellCoord.Add(CellCoord, BuildingInstance);
 	}
 
-	if (!BuildingData->bIsConveyor)
+	if (UsesMachineRuntimeData(BuildingData))
 	{
 		FFactoryMachineRuntimeData RuntimeData;
 		RuntimeData.BuildingId = BuildingId;
@@ -174,6 +175,17 @@ bool AFactoryManager::TryPlaceBuilding(
 		RuntimeData.ExtractionRatePerSecond = BuildingData->ExtractionRatePerSecond;
 		InitializeMachinePortStorage(RuntimeData);
 		MachineRuntimeData.Add(RuntimeData);
+	}
+
+	if (UsesStorageRuntimeData(BuildingData))
+	{
+		FFactoryStorageRuntimeData RuntimeData;
+		RuntimeData.BuildingId = BuildingId;
+		RuntimeData.OriginCoord = OriginCoord;
+		RuntimeData.WorldPorts = WorldPorts;
+		RuntimeData.AvailableSlots = FMath::Max(0, BuildingData->AvailableSlots);
+		RuntimeData.Slots.SetNum(RuntimeData.AvailableSlots);
+		StorageRuntimeData.Add(RuntimeData);
 	}
 
 	for (const FGridCoord& CellCoord : OccupiedCoords)
@@ -285,9 +297,30 @@ bool AFactoryManager::IsPortOnFootprintBoundary(const FFactoryBuildingPort& Port
 	return !IsLocalCoordInsideFootprint(NeighborCoord, FootprintSize);
 }
 
+bool AFactoryManager::IsConveyorBuildable(const UFactoryBuildingDataAsset* BuildingData) const
+{
+	return BuildingData && BuildingData->BuildableType == EFactoryBuildableType::Conveyor;
+}
+
+bool AFactoryManager::UsesMachineRuntimeData(const UFactoryBuildingDataAsset* BuildingData) const
+{
+	if (!BuildingData)
+	{
+		return false;
+	}
+
+	return BuildingData->BuildableType == EFactoryBuildableType::Machine
+		|| BuildingData->BuildableType == EFactoryBuildableType::Extractor;
+}
+
+bool AFactoryManager::UsesStorageRuntimeData(const UFactoryBuildingDataAsset* BuildingData) const
+{
+	return BuildingData && BuildingData->BuildableType == EFactoryBuildableType::Storage;
+}
+
 bool AFactoryManager::IsResourceExtractor(const UFactoryBuildingDataAsset* BuildingData) const
 {
-	return BuildingData && BuildingData->BuildingTypeId == TEXT("Miner");
+	return BuildingData && BuildingData->BuildableType == EFactoryBuildableType::Extractor;
 }
 
 TSet<EFactoryResourceType> AFactoryManager::BuildAcceptedResourceTypesForPort(
@@ -576,6 +609,13 @@ bool AFactoryManager::RemoveBuildingAtCoord(const FGridCoord& Coord)
 		}
 	);
 
+	StorageRuntimeData.RemoveAllSwap(
+		[BuildingId](const FFactoryStorageRuntimeData& RuntimeData)
+		{
+			return RuntimeData.BuildingId == BuildingId;
+		}
+	);
+
 	BuildingActors[BuildingId] = nullptr;
 	BuildingActor->Destroy();
 
@@ -741,12 +781,42 @@ bool AFactoryManager::GetMachineRuntimeDataByBuildingId(
 	return true;
 }
 
+bool AFactoryManager::GetStorageRuntimeDataAtCoord(
+	const FGridCoord& Coord,
+	FFactoryStorageRuntimeData& OutRuntimeData
+) const
+{
+	const FFactoryGridCell* Cell = GetCell(Coord);
+	if (!Cell || Cell->Occupancy != EFactoryCellOccupancy::Building || Cell->BuildingId == INDEX_NONE)
+	{
+		return false;
+	}
+
+	return GetStorageRuntimeDataByBuildingId(Cell->BuildingId, OutRuntimeData);
+}
+
+bool AFactoryManager::GetStorageRuntimeDataByBuildingId(
+	int32 BuildingId,
+	FFactoryStorageRuntimeData& OutRuntimeData
+) const
+{
+	const FFactoryStorageRuntimeData* RuntimeData = FindStorageRuntimeDataByBuildingId(BuildingId);
+	if (!RuntimeData)
+	{
+		return false;
+	}
+
+	OutRuntimeData = *RuntimeData;
+	return true;
+}
+
 // Simulation
 
 void AFactoryManager::SimulationStep()
 {
 	UpdateConveyors(SimulationStepInterval);
 	UpdateMachines(SimulationStepInterval);
+	UpdateStorages(SimulationStepInterval);
 }
 
 void AFactoryManager::UpdateMachines(float DeltaTime)
@@ -867,7 +937,7 @@ void AFactoryManager::UpdateConveyors(float /*DeltaTime*/)
 				continue;
 			}
 		}
-		else if (!HasCompatibleMachineInputAtCoord(ConveyorSegment.NextCoord, ConveyorSegment.Coord, ConveyorSegment.CurrentResourceType))
+		else if (!HasCompatibleBuildingInputAtCoord(ConveyorSegment.NextCoord, ConveyorSegment.Coord, ConveyorSegment.CurrentResourceType))
 		{
 			continue;
 		}
@@ -902,7 +972,7 @@ void AFactoryManager::UpdateConveyors(float /*DeltaTime*/)
 			TargetSegment->ResourceVisualToCoord = TargetSegment->Coord;
 			TargetSegment->ResourceVisualMoveElapsed = 0.0f;
 		}
-		else if (TryAddResourceToMachineInput(SourceSegment->Coord, SourceSegment->NextCoord, MovePair.Value))
+		else if (TryAddResourceToBuildingInput(SourceSegment->Coord, SourceSegment->NextCoord, MovePair.Value))
 		{
 			RemoveResourceVisual(SourceSegment->CurrentResourceType, SourceSegment->ResourceVisualInstanceIndex);
 		}
@@ -917,6 +987,14 @@ void AFactoryManager::UpdateConveyors(float /*DeltaTime*/)
 		SourceSegment->ResourceVisualFromCoord = FGridCoord();
 		SourceSegment->ResourceVisualToCoord = FGridCoord();
 		SourceSegment->ResourceVisualMoveElapsed = 0.0f;
+	}
+}
+
+void AFactoryManager::UpdateStorages(float /*DeltaTime*/)
+{
+	for (FFactoryStorageRuntimeData& RuntimeData : StorageRuntimeData)
+	{
+		TryFlushStorageOutput(RuntimeData);
 	}
 }
 
@@ -958,10 +1036,10 @@ bool AFactoryManager::TryPushResourceToOutputTarget(
 )
 {
 	return TryPushResourceToConveyor(SourceCoord, TargetCoord, ResourceType)
-		|| TryAddResourceToMachineInput(SourceCoord, TargetCoord, ResourceType);
+		|| TryAddResourceToBuildingInput(SourceCoord, TargetCoord, ResourceType);
 }
 
-bool AFactoryManager::TryAddResourceToMachineInput(
+bool AFactoryManager::TryAddResourceToBuildingInput(
 	const FGridCoord& SourceCoord,
 	const FGridCoord& TargetCoord,
 	EFactoryResourceType ResourceType
@@ -978,13 +1056,18 @@ bool AFactoryManager::TryAddResourceToMachineInput(
 		return false;
 	}
 
-	FFactoryMachineRuntimeData* RuntimeData = FindMachineRuntimeDataByBuildingId(TargetCell->BuildingId);
-	if (!RuntimeData || RuntimeData->bIsExtractor)
+	if (TryAddResourceToStorageInput(SourceCoord, TargetCoord, ResourceType))
+	{
+		return true;
+	}
+
+	FFactoryMachineRuntimeData* MachineRuntime = FindMachineRuntimeDataByBuildingId(TargetCell->BuildingId);
+	if (!MachineRuntime || MachineRuntime->bIsExtractor)
 	{
 		return false;
 	}
 
-	for (FFactoryMachinePortStorage& InputStorage : RuntimeData->InputStorageByPort)
+	for (FFactoryMachinePortStorage& InputStorage : MachineRuntime->InputStorageByPort)
 	{
 		const FFactoryPlacedBuildingPort& Port = InputStorage.Port;
 		if (Port.PortType != EFactoryPortType::Input || Port.Direction == EFactoryDirection::None)
@@ -1010,6 +1093,54 @@ bool AFactoryManager::TryAddResourceToMachineInput(
 	return false;
 }
 
+bool AFactoryManager::TryAddResourceToStorageInput(
+	const FGridCoord& SourceCoord,
+	const FGridCoord& TargetCoord,
+	EFactoryResourceType ResourceType
+)
+{
+	if (ResourceType == EFactoryResourceType::None)
+	{
+		return false;
+	}
+
+	const FFactoryGridCell* TargetCell = GetCell(TargetCoord);
+	if (!TargetCell || TargetCell->Occupancy != EFactoryCellOccupancy::Building || TargetCell->BuildingId == INDEX_NONE)
+	{
+		return false;
+	}
+
+	FFactoryStorageRuntimeData* StorageRuntime = FindStorageRuntimeDataByBuildingId(TargetCell->BuildingId);
+	if (!StorageRuntime)
+	{
+		return false;
+	}
+
+	for (const FFactoryPlacedBuildingPort& Port : StorageRuntime->WorldPorts)
+	{
+		if (Port.PortType != EFactoryPortType::Input || Port.Direction == EFactoryDirection::None)
+		{
+			continue;
+		}
+
+		if (!DoesPortAcceptResource(Port, ResourceType))
+		{
+			continue;
+		}
+
+		const FGridCoord DirectionOffset = DirectionToGridOffset(Port.Direction);
+		const FGridCoord ExpectedSourceCoord(Port.WorldCoord.X + DirectionOffset.X, Port.WorldCoord.Y + DirectionOffset.Y);
+		if (ExpectedSourceCoord != SourceCoord)
+		{
+			continue;
+		}
+
+		return TryAddResourceToStorageRuntime(*StorageRuntime, ResourceType, 1);
+	}
+
+	return false;
+}
+
 FFactoryMachineRuntimeData* AFactoryManager::FindMachineRuntimeDataByBuildingId(int32 BuildingId)
 {
 	for (FFactoryMachineRuntimeData& RuntimeData : MachineRuntimeData)
@@ -1026,6 +1157,32 @@ FFactoryMachineRuntimeData* AFactoryManager::FindMachineRuntimeDataByBuildingId(
 const FFactoryMachineRuntimeData* AFactoryManager::FindMachineRuntimeDataByBuildingId(int32 BuildingId) const
 {
 	for (const FFactoryMachineRuntimeData& RuntimeData : MachineRuntimeData)
+	{
+		if (RuntimeData.BuildingId == BuildingId)
+		{
+			return &RuntimeData;
+		}
+	}
+
+	return nullptr;
+}
+
+FFactoryStorageRuntimeData* AFactoryManager::FindStorageRuntimeDataByBuildingId(int32 BuildingId)
+{
+	for (FFactoryStorageRuntimeData& RuntimeData : StorageRuntimeData)
+	{
+		if (RuntimeData.BuildingId == BuildingId)
+		{
+			return &RuntimeData;
+		}
+	}
+
+	return nullptr;
+}
+
+const FFactoryStorageRuntimeData* AFactoryManager::FindStorageRuntimeDataByBuildingId(int32 BuildingId) const
+{
+	for (const FFactoryStorageRuntimeData& RuntimeData : StorageRuntimeData)
 	{
 		if (RuntimeData.BuildingId == BuildingId)
 		{
@@ -1402,6 +1559,134 @@ bool AFactoryManager::TryRemoveResourceFromStorageMap(
 	return true;
 }
 
+bool AFactoryManager::TryAddResourceToStorageRuntime(
+	FFactoryStorageRuntimeData& RuntimeData,
+	EFactoryResourceType ResourceType,
+	int32 Count
+)
+{
+	if (!CanStorageRuntimeAcceptResource(RuntimeData, ResourceType, Count))
+	{
+		return false;
+	}
+
+	const int32 StackSize = GetResourceStackSize(ResourceType);
+
+	for (FFactoryStorageSlot& Slot : RuntimeData.Slots)
+	{
+		if (Slot.ResourceType == ResourceType && Slot.Count + Count <= StackSize)
+		{
+			Slot.Count += Count;
+			return true;
+		}
+	}
+
+	for (FFactoryStorageSlot& Slot : RuntimeData.Slots)
+	{
+		if (Slot.IsEmpty())
+		{
+			Slot.ResourceType = ResourceType;
+			Slot.Count = Count;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AFactoryManager::CanStorageRuntimeAcceptResource(
+	const FFactoryStorageRuntimeData& RuntimeData,
+	EFactoryResourceType ResourceType,
+	int32 Count
+) const
+{
+	if (ResourceType == EFactoryResourceType::None || Count <= 0)
+	{
+		return false;
+	}
+
+	const int32 StackSize = GetResourceStackSize(ResourceType);
+	if (StackSize <= 0 || Count > StackSize)
+	{
+		return false;
+	}
+
+	for (const FFactoryStorageSlot& Slot : RuntimeData.Slots)
+	{
+		if (Slot.ResourceType == ResourceType && Slot.Count + Count <= StackSize)
+		{
+			return true;
+		}
+	}
+
+	for (const FFactoryStorageSlot& Slot : RuntimeData.Slots)
+	{
+		if (Slot.IsEmpty())
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AFactoryManager::TryFlushStorageOutput(FFactoryStorageRuntimeData& RuntimeData)
+{
+	TArray<const FFactoryPlacedBuildingPort*> OutputPorts;
+	for (const FFactoryPlacedBuildingPort& Port : RuntimeData.WorldPorts)
+	{
+		if (Port.PortType == EFactoryPortType::Output && Port.Direction != EFactoryDirection::None)
+		{
+			OutputPorts.Add(&Port);
+		}
+	}
+
+	if (OutputPorts.IsEmpty())
+	{
+		return false;
+	}
+
+	for (int32 AttemptIndex = 0; AttemptIndex < OutputPorts.Num(); ++AttemptIndex)
+	{
+		const int32 PortIndex = (RuntimeData.OutputRoundRobinIndex + AttemptIndex) % OutputPorts.Num();
+		const FFactoryPlacedBuildingPort* OutputPort = OutputPorts[PortIndex];
+		if (!OutputPort)
+		{
+			continue;
+		}
+
+		const FGridCoord TargetCoord(
+			OutputPort->WorldCoord.X + DirectionToGridOffset(OutputPort->Direction).X,
+			OutputPort->WorldCoord.Y + DirectionToGridOffset(OutputPort->Direction).Y
+		);
+
+		for (FFactoryStorageSlot& Slot : RuntimeData.Slots)
+		{
+			if (Slot.IsEmpty() || !DoesPortAcceptResource(*OutputPort, Slot.ResourceType))
+			{
+				continue;
+			}
+
+			if (!TryPushResourceToOutputTarget(OutputPort->WorldCoord, TargetCoord, Slot.ResourceType))
+			{
+				continue;
+			}
+
+			--Slot.Count;
+			if (Slot.Count <= 0)
+			{
+				Slot.ResourceType = EFactoryResourceType::None;
+				Slot.Count = 0;
+			}
+
+			RuntimeData.OutputRoundRobinIndex = (PortIndex + 1) % OutputPorts.Num();
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void AFactoryManager::UpdateResourceVisuals(float DeltaTime)
 {
 	const float MoveDuration = FMath::Max(SimulationStepInterval, KINDA_SMALL_NUMBER);
@@ -1483,7 +1768,7 @@ bool AFactoryManager::CanPlaceConveyor(
 ) const
 {
 	return ConveyorData
-		&& ConveyorData->bIsConveyor
+		&& IsConveyorBuildable(ConveyorData)
 		&& ConveyorData->ConveyorMesh
 		&& CanPlaceBuilding(ConveyorData, OriginCoord, Direction);
 }
@@ -1640,7 +1925,7 @@ bool AFactoryManager::TryFindConveyorOutputTarget(const FFactoryConveyorSegment&
 			return true;
 		}
 
-		if (!TargetConveyor && HasCompatibleMachineInputAtCoord(TargetCoord, ConveyorSegment.Coord, ConveyorSegment.CurrentResourceType))
+		if (!TargetConveyor && HasCompatibleBuildingInputAtCoord(TargetCoord, ConveyorSegment.Coord, ConveyorSegment.CurrentResourceType))
 		{
 			OutTargetCoord = TargetCoord;
 			return true;
@@ -1679,7 +1964,7 @@ bool AFactoryManager::HasCompatibleInputPort(
 	return false;
 }
 
-bool AFactoryManager::HasCompatibleMachineInputAtCoord(
+bool AFactoryManager::HasCompatibleBuildingInputAtCoord(
 	const FGridCoord& TargetCoord,
 	const FGridCoord& SourceCoord,
 	EFactoryResourceType ResourceType
@@ -1713,6 +1998,11 @@ bool AFactoryManager::HasCompatibleMachineInputAtCoord(
 		const FGridCoord ExpectedSourceCoord(Port.WorldCoord.X + DirectionOffset.X, Port.WorldCoord.Y + DirectionOffset.Y);
 		if (ExpectedSourceCoord == SourceCoord)
 		{
+			if (const FFactoryStorageRuntimeData* StorageRuntime = FindStorageRuntimeDataByBuildingId(TargetCell->BuildingId))
+			{
+				return CanStorageRuntimeAcceptResource(*StorageRuntime, ResourceType, 1);
+			}
+
 			return true;
 		}
 	}
@@ -2089,7 +2379,7 @@ UStaticMesh* AFactoryManager::GetPreviewMeshForBuilding(const UFactoryBuildingDa
 		return BuildingData->PreviewMesh;
 	}
 
-	if (BuildingData->bIsConveyor)
+	if (IsConveyorBuildable(BuildingData))
 	{
 		return BuildingData->ConveyorMesh;
 	}
@@ -2297,34 +2587,112 @@ void AFactoryManager::DrawDebugMachineState() const
 		return;
 	}
 
+	const UEnum* ResourceEnum = StaticEnum<EFactoryResourceType>();
+
 	for (const FFactoryMachineRuntimeData& RuntimeData : MachineRuntimeData)
 	{
-		if (RuntimeData.bIsExtractor || !RuntimeData.RecipeData)
+		FString DebugText;
+		FColor DebugColor = FColor::Cyan;
+
+		if (RuntimeData.bIsExtractor)
 		{
-			continue;
+			const FString ExtractedResourceName = RuntimeData.ExtractedResourceType == EFactoryResourceType::None
+				? TEXT("None")
+				: ResourceEnum
+					? ResourceEnum->GetNameStringByValue(static_cast<int64>(RuntimeData.ExtractedResourceType))
+					: TEXT("Resource");
+
+			DebugText = FString::Printf(
+				TEXT("Extractor: %s\nProgress: %.2f / 1.00\nRate: %.2f / sec"),
+				*ExtractedResourceName,
+				RuntimeData.ExtractionProgress,
+				RuntimeData.ExtractionRatePerSecond
+			);
+
+			if (RuntimeData.InternalStorage.IsEmpty())
+			{
+				DebugText += TEXT("\nInternal: Empty");
+			}
+			else
+			{
+				DebugText += TEXT("\nInternal:");
+				for (const TPair<EFactoryResourceType, int32>& StoredResource : RuntimeData.InternalStorage)
+				{
+					const FString StoredResourceName = ResourceEnum
+						? ResourceEnum->GetNameStringByValue(static_cast<int64>(StoredResource.Key))
+						: TEXT("Resource");
+					DebugText += FString::Printf(TEXT("\n  %s x%d"), *StoredResourceName, StoredResource.Value);
+				}
+			}
+
+			DebugColor = FColor::Orange;
 		}
+		else
+		{
+			if (!RuntimeData.RecipeData)
+			{
+				continue;
+			}
 
-		const FString RecipeName = RuntimeData.RecipeId.IsNone()
-			? TEXT("None")
-			: RuntimeData.RecipeId.ToString();
+			const FString RecipeName = RuntimeData.RecipeId.IsNone()
+				? TEXT("None")
+				: RuntimeData.RecipeId.ToString();
 
-		const float CraftTime = RuntimeData.RecipeData
-			? RuntimeData.RecipeData->CraftTime
-			: 0.0f;
+			const float CraftTime = RuntimeData.RecipeData
+				? RuntimeData.RecipeData->CraftTime
+				: 0.0f;
 
-		const FString DebugText = FString::Printf(
-			TEXT("Recipe: %s\nProgress: %.1f / %.1f"),
-			*RecipeName,
-			RuntimeData.CraftProgress,
-			CraftTime
-		);
+			DebugText = FString::Printf(
+				TEXT("Recipe: %s\nProgress: %.1f / %.1f"),
+				*RecipeName,
+				RuntimeData.CraftProgress,
+				CraftTime
+			);
+		}
 
 		DrawDebugString(
 			GetWorld(),
 			GridCellCenterToWorld(RuntimeData.OriginCoord) + FVector(0.0f, 0.0f, 130.0f),
 			DebugText,
 			nullptr,
-			FColor::Cyan,
+			DebugColor,
+			0.0f,
+			true
+		);
+	}
+}
+
+void AFactoryManager::DrawDebugStorageState() const
+{
+	if (!GetWorld())
+	{
+		return;
+	}
+
+	const UEnum* ResourceEnum = StaticEnum<EFactoryResourceType>();
+
+	for (const FFactoryStorageRuntimeData& RuntimeData : StorageRuntimeData)
+	{
+		FString DebugText = FString::Printf(TEXT("Storage: %d slots"), RuntimeData.AvailableSlots);
+
+		for (int32 SlotIndex = 0; SlotIndex < RuntimeData.Slots.Num(); ++SlotIndex)
+		{
+			const FFactoryStorageSlot& Slot = RuntimeData.Slots[SlotIndex];
+			const FString ResourceName = Slot.IsEmpty()
+				? TEXT("Empty")
+				: ResourceEnum
+					? ResourceEnum->GetNameStringByValue(static_cast<int64>(Slot.ResourceType))
+					: TEXT("Resource");
+
+			DebugText += FString::Printf(TEXT("\n[%d] %s x%d"), SlotIndex, *ResourceName, Slot.Count);
+		}
+
+		DrawDebugString(
+			GetWorld(),
+			GridCellCenterToWorld(RuntimeData.OriginCoord) + FVector(0.0f, 0.0f, 130.0f),
+			DebugText,
+			nullptr,
+			FColor::Green,
 			0.0f,
 			true
 		);

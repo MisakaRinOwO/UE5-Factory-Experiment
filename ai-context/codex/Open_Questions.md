@@ -1,6 +1,6 @@
 # FactoryExperiment Open Questions
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 This file tracks unclear requirements or design choices that should be confirmed with the user before changing core direction.
 
@@ -157,7 +157,6 @@ Current behavior:
 
 Remaining adjacent work:
 
-- Storage accepting the processed resource is still future work.
 - `W_BuildingInfo` exists but is not connected to `PC_Factory` yet.
 
 ## Open: Building Info UI Hookup
@@ -173,18 +172,47 @@ Needs confirmation/implementation:
 - Whether selecting a building should pause placement preview, coexist with placement mode, or cancel current build selection.
 - Exact UI refresh cadence: update every simulation step, every tick while open, or only when changed.
 
-## Open: Storage Building Behavior
+## Resolved: Storage Building Behavior
 
-User direction:
+Current behavior:
 
-- Storage will be added through Blueprint later.
-- Intended storage behavior: each grid cell can store one resource type.
+- Storage has separate runtime data from machine runtime data.
+- `AvailableSlots` controls the number of slots.
+- Each slot stores one resource type up to that resource's stack size.
+- Storage input uses DA-authored input ports and normal port resource filtering.
+- Storage output uses DA-authored output ports and the same output-target path as machine output.
+- Each simulation step, storage outputs at most one resource.
+- User verified storage behavior in editor.
 
-Needs confirmation before implementation:
+Future options:
 
-- Whether storage should use a separate runtime data struct from processor machines.
-- Whether storage capacity is per occupied grid cell, per port, or whole building.
-- Whether storage should accept all resources by default or use DA-configured accepted resources.
+- Add richer storage UI in `W_BuildingInfo`.
+- Add explicit per-slot resource filters if needed.
+- Add output priorities or pull/request-based logistics later.
+
+## Future Discussion: Extractor/Machine Runtime Unification
+
+Status: future refactor idea, not current MVP work.
+
+Idea:
+
+- Miner could eventually become a special machine with a terrain/resource input source.
+- A terrain input could read `ResourceMapData` or footprint coverage instead of reading item storage.
+- Miner production could then share the same lifecycle as smelter/assembler production:
+  - acquire input
+  - advance progress
+  - write output storage
+  - flush output
+
+Why defer:
+
+- Current miner extraction, round-robin output, direct miner-to-smelter flow, and miner-conveyor-smelter flow are already verified.
+- Refactoring now would touch recipe processing, port rules, resource-map query, runtime storage, debug UI, and BP data assets.
+- Complete storage and building-info UI first, then revisit as a named architecture cleanup.
+
+Related cleanup:
+
+- This refactor could also make `UFactoryBuildingDataAsset` less crowded by separating common buildable fields from conveyor, processor, and extractor-specific settings.
 
 ## Resolved: README and Context Update Workflow
 
