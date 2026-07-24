@@ -54,10 +54,12 @@ Implemented / added so far:
 - Storage runtime data with input/output ports, slot capacity, and Blueprint query APIs.
 - Storage input/output transfer using the same conveyor/building port compatibility rules as machines.
 - Miner/extractor debug text showing extracted resource, extraction progress/rate, and internal storage.
+- Building selection toolbar widgets with thin dedicated C++ parent classes.
+- Semi-automatic mesh-to-texture icon pipeline for building toolbar icons.
 
 Immediate next step:
 
-- Connect `W_BuildingInfo` from `PC_Factory` so clicking a building can display IO slots, stored resources, recipe id, and production progress.
+- Create/connect the dedicated building info panel UI so clicked buildings can display IO slots, stored resources, recipe id, and production progress.
 
 ## Core Design Direction
 
@@ -309,6 +311,13 @@ Current developer UI also reports:
 
 `AFactoryManager` now has separate text-debug toggles for conveyor resource text and machine recipe/progress text.
 
+Building selection UI is separate from developer debug UI:
+
+- `W_BuildingSelection` displays the bottom toolbar.
+- `W_BuildingSelectionItem` owns each toolbar cell layout.
+- `UFactoryBuildingSelectionWidget` and `UFactoryBuildingSelectionItemWidget` are thin dedicated C++ parent classes for the toolbar; Blueprint owns the layout, highlight state, and visual behavior.
+- The toolbar currently supports eight slots and has been connected from `PC_Factory`.
+
 ## Planned MVP Milestones
 
 1. Validate GameMode / PlayerController / FactoryPawn / IA / IMC setup. Done.
@@ -326,9 +335,10 @@ Current developer UI also reports:
 13. Implement conveyor delivery into machine input storage. Done.
 14. Implement smelter recipe processing. Done.
 15. Create building info UI widget. Done, but not connected to `PC_Factory` yet.
-16. Connect building info UI from `PC_Factory` for clicked buildings.
-17. Add storage behavior. Done.
-18. Record a short portfolio demo showing placement, chunk debug, conveyor movement, production, and storage.
+16. Add building selection toolbar UI. Done.
+17. Connect building info UI from `PC_Factory` for clicked buildings.
+18. Add storage behavior. Done.
+19. Record a short portfolio demo showing placement, chunk debug, conveyor movement, production, and storage.
 
 ## Portfolio Focus
 

@@ -1,6 +1,6 @@
 # FactoryExperiment Design Decisions
 
-Last updated: 2026-07-24
+Last updated: 2026-07-25
 
 This file records the reasoning behind the current implementation direction. It is based on the existing project memory and current repository state.
 
@@ -356,6 +356,11 @@ Reasoning:
 - Hover debug and UI compensate by showing cell coord, chunk coord, occupancy, direction, building, and conveyor data.
 - Debug tools are part of the portfolio signal because they show the system can be inspected and reasoned about.
 
+Boundary:
+
+- `UFactoryDeveloperModeWidget` should remain a debug/developer HUD parent class.
+- Do not grow it into the player-facing building selection or building info UI parent.
+
 ## Building Lookup Direction
 
 Current implementation: building actors are stored in an array by `BuildingId`, and footprint cells store `BuildingId`.
@@ -569,6 +574,45 @@ Current additional debug/UI support:
 - Blueprint runtime queries exist for looking up machine state by grid coord or building id.
 - Blueprint runtime queries exist for looking up storage state by grid coord or building id.
 - `W_BuildingInfo` exists in content, but it is intentionally not counted as gameplay-complete until `PC_Factory` opens and refreshes it.
+
+## Building Selection UI
+
+Decision: building selection uses dedicated C++ parent widget classes instead of reusing the developer debug widget parent.
+
+Current Blueprint widgets:
+
+- `W_BuildingSelection`: bottom toolbar widget with eight selection cells in a horizontal layout.
+- `W_BuildingSelectionItem`: individual toolbar cell with button, item image, highlight image/box, key number, and item name.
+
+Current Blueprint-side functions:
+
+- `W_BuildingSelectionItem.Set Style(ItemTexture, KeyNumber, ItemName)` initializes the item visual.
+- `W_BuildingSelectionItem.Toggle Highlight` updates highlight color and its highlighted flag.
+- `W_BuildingSelectionItem.Set Key Number` updates key display independently.
+- `W_BuildingSelection.Init Toolbar` initializes the default toolbar state.
+- `W_BuildingSelection.Clear All Highlight` clears every item highlight.
+- `W_BuildingSelection.Get Item By Index(int)` returns a selection item widget.
+
+Current C++ parent classes:
+
+- `UFactoryBuildingSelectionWidget`
+- `UFactoryBuildingSelectionItemWidget`
+
+These parent classes are intentionally thin, like `UFactoryDeveloperModeWidget`: they expose Blueprint-callable / Blueprint-implementable UI events and do not own toolbar layout behavior in C++.
+
+Reasoning:
+
+- Building selection is gameplay/portfolio-facing UI, while developer mode is debug UI.
+- Separate parent classes prevent `UFactoryDeveloperModeWidget` from becoming a mixed-purpose widget.
+- The item widget and toolbar widget have different responsibilities, so two parent classes are cleaner than one shared parent.
+- `PC_Factory` can drive selection state, while the widgets stay responsible for presentation.
+- The existing Blueprint widgets already own layout and visual state such as highlight color/flag, so C++ should not duplicate that behavior.
+
+Icon pipeline:
+
+- `BP_MeshIconMaker` is a semi-automatic mesh icon capture tool based on the referenced tutorial pipeline.
+- It is used to create texture icons for the four base buildings.
+- The generated textures are hooked into `W_BuildingSelection`.
 
 ## Storage Runtime
 

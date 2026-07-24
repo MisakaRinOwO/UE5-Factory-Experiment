@@ -1,6 +1,6 @@
 # FactoryExperiment Open Questions
 
-Last updated: 2026-07-24
+Last updated: 2026-07-25
 
 This file tracks unclear requirements or design choices that should be confirmed with the user before changing core direction.
 
@@ -165,9 +165,12 @@ Known state:
 
 - `W_BuildingInfo` has been created in Blueprint.
 - C++ now exposes machine runtime query APIs that can support UI display for IO slots, stored item/count, recipe id, and production progress.
+- `W_BuildingSelection` and `W_BuildingSelectionItem` are connected from `PC_Factory` and verified.
+- `W_BuildingSelection` / `W_BuildingSelectionItem` now have dedicated C++ parent classes.
 
 Needs confirmation/implementation:
 
+- Create a dedicated `UFactoryBuildingInfoWidget` C++ parent class for `W_BuildingInfo`.
 - How `PC_Factory` should choose/open/close the widget on building click.
 - Whether selecting a building should pause placement preview, coexist with placement mode, or cancel current build selection.
 - Exact UI refresh cadence: update every simulation step, every tick while open, or only when changed.

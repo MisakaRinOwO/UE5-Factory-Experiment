@@ -1,6 +1,6 @@
 # FactoryExperiment Codex Master Prompt
 
-Last updated: 2026-07-24
+Last updated: 2026-07-25
 
 ## Project Summary
 
@@ -18,6 +18,7 @@ The project is inspired by flat factory/simulation games such as shapez and Oxyg
 - Smooth resource mesh feedback layered over fixed-step data simulation.
 - Selected-building hover preview and machine production debug text.
 - Storage input/output runtime with slot-based resource storage.
+- Dedicated building selection toolbar UI classes separate from developer debug UI.
 
 ## Current Direction
 
@@ -77,6 +78,10 @@ Implemented or present in the repository:
 - Conveyor resource text and machine recipe/progress text have separate debug toggles.
 - Machine runtime data can be queried from Blueprint by hovered/selected coord or building id for future UI.
 - `W_BuildingInfo` exists on the Blueprint/content side, but it is not connected to `PC_Factory` yet.
+- `W_BuildingSelection` and `W_BuildingSelectionItem` exist on the Blueprint/content side and are connected from `PC_Factory`.
+- `UFactoryBuildingSelectionWidget` and `UFactoryBuildingSelectionItemWidget` are thin dedicated C++ parent classes for building selection UI, exposing Blueprint events/interfaces while leaving layout and highlight behavior in BP.
+- `W_BuildingSelection` displays eight selection cells and uses `W_BuildingSelectionItem` for each cell layout.
+- A semi-automatic mesh icon capture pipeline exists through `BP_MeshIconMaker`; generated building icon textures are hooked into the selection toolbar.
 - Storage runtime data exists separately from machine runtime data.
 - Storage input receives resources through DA-authored input ports.
 - Storage output flushes resources through DA-authored output ports using the same conveyor/building output target path as machines.
@@ -88,6 +93,7 @@ Implemented or present in the repository:
 Current incomplete areas:
 
 - `W_BuildingInfo` is not wired into click-selection / `PC_Factory` yet.
+- A dedicated building info C++ parent class is still pending. Do not reuse `UFactoryDeveloperModeWidget` for building info UI.
 - Conveyor movement is data-correct for MVP but does not yet use conveyor speed as a throughput/progress parameter.
 - Moving resource visual removal is MVP-safe but not memory-reusing yet; hidden instances may accumulate until a future pooling/free-list pass. Keep this implementation for now because it preserves correctness and avoids extra lifecycle complexity before assembler/storage/recipe flow is complete.
 - Building footprint lookup should likely move toward a coord-keyed lookup for robust hover/delete.
@@ -122,7 +128,7 @@ When continuing work on this project:
    - Keep storage input/output behavior stable.
    - Click a building in `PC_Factory` and open `W_BuildingInfo`.
    - Conveyor can deliver into building input ports.
-4. Add BP UI display for machine inventory, crafting progress, and output blocked state using the existing runtime query APIs.
+4. Add a dedicated building info C++ parent class and BP UI display for machine inventory, crafting progress, storage slots, and output blocked state using the existing runtime query APIs.
 5. Improve building footprint lookup:
    - Add coord-keyed mapping so hovering any footprint cell resolves the same building instance.
 6. Consider conveyor speed/progress only after the fixed-step production chain is complete.
